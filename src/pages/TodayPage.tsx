@@ -1,0 +1,2 @@
+import TodayAdvice from '../components/TodayAdvice';import WeatherCard from '../components/WeatherCard';
+export default function TodayPage(){return <><section className="card bg-gradient-to-br from-orange-100 to-teal-50"><p className="text-sm uppercase tracking-wide text-amber-800">Vandaag kiezen</p><h2 className="text-2xl font-bold">Wat past bij het weer, Lena en onze energie?</h2><p className="mt-2 text-stone-700">Kies klein als dat beter voelt. Alles hier is bedoeld als hulp, niet als planning die moet.</p></section><WeatherCard/><TodayAdvice/></>}
