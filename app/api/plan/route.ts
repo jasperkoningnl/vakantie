@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { uitjes } from '@/lib/uitjes'
+import { marktdagen } from '@/lib/marktdagen'
+
+const LENA_DAGRITME = `Houd rekening met Lena's dagritme. Ze is 4 jaar oud. De ochtend (9:00-12:00) is het actieve venster: plan dan de buitenactiviteit of het avontuur. Rond 12:30 lunchen. Tussen 13:00 en 15:00 is een rustig moment (autorit = slaapje in de auto). Vanaf 15:00 een tweede kort venster voor een kalme activiteit. Plan de langste autorit rond 13:30 als dat kan. Eindig de dag niet te laat: uiterlijk 17:30 terug bij Les Escaliers.`
 
 const SYSTEM_PROMPT = `Je bent een vriendelijke Franse reisplanner voor een Nederlands gezin:
 Jasper (48), Hilda en Lena (4 jaar). Ze verblijven bij Les Escaliers
 de La Combe in Porte-du-Quercy (44.521, 1.150). Ze eten vegetarisch.
 Je krijgt het huidige weer, de gewenste activiteit, de maximale rijdijd,
-en een lijst van beschikbare uitjes.`
+en een lijst van beschikbare uitjes.
+
+${LENA_DAGRITME}`
+
+function buildMarktdagenContext(): string {
+  const today = new Date().getDay()
+  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
+  const todayNaam = dagNamen[today]
+  const vandaagMarkten = marktdagen.filter(m => m.dag === todayNaam)
+
+  if (vandaagMarkten.length === 0) return ''
+  const marktInfo = vandaagMarkten.map(m => `${m.dag}: ${m.plaats} — ${m.omschrijving}`).join('; ')
+  return `\nVandaag zijn er markten: ${marktInfo}. Als de gebruiker eten of boodschappen wil, stel de markt dan als eerste optie voor.`
+}
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -18,7 +34,7 @@ function extractJson(text: string): unknown {
 
 export async function POST(req: NextRequest) {
   try {
-    const { phase, activity, driveTime, weather, selectedIds } = await req.json()
+    const { phase, activity, driveTime, weather, selectedIds, visitedNames } = await req.json()
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -26,11 +42,18 @@ export async function POST(req: NextRequest) {
       .map(u => `[${u.id}] ${u.name} (${u.type}, ${u.drive}): ${u.desc}${u.vegetarian ? ' 🌿' : ''}`)
       .join('\n')
 
+    const marktContext = buildMarktdagenContext()
+    const visitedContext = visitedNames?.length
+      ? `\nDe volgende uitjes zijn al bezocht en hoef je niet meer voor te stellen: ${(visitedNames as string[]).join(', ')}.`
+      : ''
+
+    const systemWithContext = SYSTEM_PROMPT + marktContext + visitedContext
+
     if (phase === 'suggest') {
       const message = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 512,
-        system: SYSTEM_PROMPT,
+        system: systemWithContext,
         messages: [
           {
             role: 'user',
@@ -56,13 +79,13 @@ Antwoord ALLEEN met geldige JSON in dit formaat (geen andere tekst):
     if (phase === 'plan') {
       const selected = uitjes.filter(u => selectedIds.includes(u.id))
       const selectedText = selected
-        .map(u => `${u.name}: ${u.desc} (${u.drive}, maps: ${u.gmaps})`)
+        .map(u => `${u.name} (coords: ${u.coords[0]}, ${u.coords[1]}): ${u.desc} (${u.drive}, maps: ${u.gmaps})`)
         .join('\n')
 
       const message = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
-        system: SYSTEM_PROMPT,
+        system: systemWithContext,
         messages: [
           {
             role: 'user',
@@ -72,13 +95,14 @@ Maximale rijduur: ${driveTime}
 Gekozen uitjes:
 ${selectedText}
 
-Stel een dagprogramma samen met 2-3 stops. Per stop: tijd, naam, beschrijving (max 3 zinnen, vertel iets interessants), praktische tip, Google Maps URL.
-Geef ook aan welke spullen handig zijn (zwemspullen, zonnebrand, regenjas, etc.).
-Schrijf warm en persoonlijk in het Nederlands.
+Maak een logische route en tijdschema. Houd rekening met Lena's ritme (actief 9-12, lunch 12:30, rust/autorit 13-15, kort venster 15-17, uiterlijk 17:30 terug).
+
+Per stop: tijd, naam, 1 zin met iets interessants, praktische tip, Google Maps link.
+Schrijf alleen het programma, geen inleidingen of afsluitteksten. Schrijf in het Nederlands.
 
 Antwoord ALLEEN met geldige JSON:
 {
-  "intro": "korte inleiding (1 zin)",
+  "intro": null,
   "stops": [
     {
       "time": "10:00",

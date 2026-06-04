@@ -5,16 +5,24 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
-const FILTERS: { label: string; value: UitjeType | 'all' | 'lena' }[] = [
-  { label: 'Alles',       value: 'all' },
-  { label: 'Lena',        value: 'lena' },
-  { label: 'Cultuur',     value: 'culture' },
-  { label: 'Natuur',      value: 'entertainment' },
-  { label: 'Eten',        value: 'food' },
-  { label: 'Boodschappen',value: 'shop' },
+type FilterValue = UitjeType | 'all' | 'lena'
+
+interface Filter {
+  label: string
+  value: FilterValue
+  icon: string
+}
+
+const FILTERS: Filter[] = [
+  { label: 'Alles',       value: 'all',           icon: 'explore' },
+  { label: 'Lena',        value: 'lena',           icon: 'child_care' },
+  { label: 'Cultuur',     value: 'culture',        icon: 'museum' },
+  { label: 'Natuur',      value: 'entertainment',  icon: 'attractions' },
+  { label: 'Eten',        value: 'food',           icon: 'restaurant' },
+  { label: 'Winkels',     value: 'shop',           icon: 'shopping_cart' },
 ]
 
-const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14']
+const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14', 'u19']
 
 const TYPE_ICONS: Record<string, string> = {
   entertainment: 'attractions',
@@ -30,15 +38,45 @@ const TYPE_COLORS: Record<string, string> = {
   shop:          'oklch(65% 0.10 218)',
 }
 
+const FILTER_COLORS: Record<string, string> = {
+  all:           'oklch(57% 0.14 40)',
+  lena:          'oklch(79% 0.16 83)',
+  culture:       'oklch(57% 0.14 40)',
+  entertainment: 'oklch(79% 0.16 83)',
+  food:          'oklch(65% 0.09 298)',
+  shop:          'oklch(65% 0.10 218)',
+}
+
 export default function UitjesPage() {
   const [view, setView] = useState<'list' | 'map'>('list')
-  const [filter, setFilter] = useState<string>('all')
+  const [filter, setFilter] = useState<FilterValue>('all')
   const [selectedMapId, setSelectedMapId] = useState<string | null>(null)
   const [basketIds, setBasketIds] = useState<string[]>([])
+  const [visitedNames, setVisitedNames] = useState<string[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem('dagplan_basket')
     if (saved) setBasketIds(JSON.parse(saved))
+
+    // Haal bezochte uitjes op uit diary entries
+    fetch('/api/diary')
+      .then(r => r.json())
+      .then((entries: Array<{ plan_text?: string }>) => {
+        const names: string[] = []
+        entries.forEach(e => {
+          if (!e.plan_text) return
+          try {
+            const plan = typeof e.plan_text === 'string' && e.plan_text.startsWith('{')
+              ? JSON.parse(e.plan_text)
+              : null
+            if (plan?.stops) {
+              plan.stops.forEach((s: { name: string }) => names.push(s.name.toLowerCase()))
+            }
+          } catch { /* ignore */ }
+        })
+        setVisitedNames(names)
+      })
+      .catch(() => {})
   }, [])
 
   const filtered = uitjes.filter(u => {
@@ -46,6 +84,8 @@ export default function UitjesPage() {
     if (filter === 'lena') return LENA_IDS.includes(u.id)
     return u.type === filter
   })
+
+  const isVisited = (u: Uitje) => visitedNames.some(n => n.includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(n))
 
   const toggleBasket = (id: string) => {
     setBasketIds(prev => {
@@ -60,6 +100,8 @@ export default function UitjesPage() {
     utter.lang = 'nl-NL'
     speechSynthesis.speak(utter)
   }
+
+  const activeColor = FILTER_COLORS[filter]
 
   return (
     <div className="px-4 pt-5">
@@ -93,29 +135,45 @@ export default function UitjesPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4" style={{ scrollbarWidth: 'none' }}>
-        {FILTERS.map(f => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold border transition-all"
-            style={
-              filter === f.value
-                ? { background: 'oklch(57% 0.14 40)', borderColor: 'oklch(57% 0.14 40)', color: 'white' }
-                : { background: '#FAF7F0', borderColor: '#E4D9C8', color: '#6B5A3E' }
-            }
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* Filters — 3×2 grid */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {FILTERS.map(f => {
+          const isActive = filter === f.value
+          const color = FILTER_COLORS[f.value]
+          return (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className="rounded-2xl py-2.5 flex flex-col items-center gap-1 transition-all"
+              style={
+                isActive
+                  ? { background: `${color}18`, border: `2px solid ${color}`, color }
+                  : { background: '#FAF7F0', border: '2px solid #E4D9C8', color: '#6B5A3E' }
+              }
+            >
+              <span
+                className="material-symbols-outlined text-xl"
+                style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
+              >
+                {f.icon}
+              </span>
+              <span className="text-xs font-semibold leading-none">{f.label}</span>
+            </button>
+          )
+        })}
       </div>
+
+      {/* Result count */}
+      <p className="text-xs mb-3" style={{ color: '#A8937A' }}>
+        {filtered.length} uitje{filtered.length !== 1 ? 's' : ''}
+        {filter !== 'all' && <span> · <button className="underline" onClick={() => setFilter('all')}>Wis filter</button></span>}
+      </p>
 
       {/* Map view */}
       {view === 'map' && (
         <div
           className="rounded-2xl overflow-hidden mb-4 shadow-blue"
-          style={{ height: 'calc(100vh - 220px)', border: '1px solid #E4D9C8' }}
+          style={{ height: 'calc(100vh - 280px)', border: '1px solid #E4D9C8' }}
         >
           <UitjesMap
             uitjes={filtered}
@@ -131,7 +189,14 @@ export default function UitjesPage() {
       {view === 'list' && (
         <div className="flex flex-col gap-3">
           {filtered.map(u => (
-            <UitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={toggleBasket} onSpeak={speak} />
+            <UitjeCard
+              key={u.id}
+              uitje={u}
+              inBasket={basketIds.includes(u.id)}
+              onToggle={toggleBasket}
+              onSpeak={speak}
+              visited={isVisited(u)}
+            />
           ))}
         </div>
       )}
@@ -166,18 +231,24 @@ function UitjeCard({
   inBasket,
   onToggle,
   onSpeak,
+  visited,
 }: {
   uitje: Uitje
   inBasket: boolean
   onToggle: (id: string) => void
   onSpeak: (text: string) => void
+  visited: boolean
 }) {
   const c = TYPE_COLORS[uitje.type] || 'oklch(57% 0.14 40)'
 
   return (
     <div
-      className="rounded-2xl p-4 shadow-blue"
-      style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+      className="rounded-2xl p-4 shadow-blue transition-opacity"
+      style={{
+        background: '#FAF7F0',
+        border: '1px solid #E4D9C8',
+        opacity: visited ? 0.65 : 1,
+      }}
     >
       <div className="flex items-start gap-3">
         <div
@@ -193,7 +264,14 @@ function UitjeCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-on-surface">{uitje.name}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="font-semibold text-on-surface truncate">{uitje.name}</h3>
+              {visited && (
+                <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'oklch(58% 0.10 148)' }}>
+                  ✓ Bezocht
+                </span>
+              )}
+            </div>
             <span
               className="text-xs font-semibold rounded-full px-2 py-0.5 flex-shrink-0"
               style={{ background: '#F0E9DA', color: '#6B5A3E' }}

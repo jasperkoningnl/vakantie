@@ -25,6 +25,9 @@ export default function DagboekPage() {
   const [saving, setSaving] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
   const [loadingPhotos, setLoadingPhotos] = useState<string | null>(null)
+  const [reisverhaal, setReisverhaal] = useState<string | null>(null)
+  const [generatingVerhaal, setGeneratingVerhaal] = useState(false)
+  const [showVerhaal, setShowVerhaal] = useState(false)
 
   useEffect(() => {
     fetch('/api/diary')
@@ -36,6 +39,8 @@ export default function DagboekPage() {
       })
       .catch(() => {})
   }, [])
+
+  const filledEntries = Object.values(entries).filter(e => e.actual_text || e.mood_emoji)
 
   const loadPhotos = async (date: string) => {
     if (photos[date] !== undefined || !session?.accessToken) return
@@ -101,6 +106,63 @@ export default function DagboekPage() {
     setGenerating(null)
   }
 
+  const generateReisverhaal = async () => {
+    setGeneratingVerhaal(true)
+    const entriesArray = Object.values(entries)
+    const res = await fetch('/api/reisverhaal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: entriesArray }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setReisverhaal(data.verhaal)
+      setShowVerhaal(true)
+    }
+    setGeneratingVerhaal(false)
+  }
+
+  if (showVerhaal && reisverhaal) {
+    return (
+      <div className="px-4 pt-5 pb-10">
+        <button
+          onClick={() => setShowVerhaal(false)}
+          className="flex items-center gap-2 text-sm font-semibold mb-4"
+          style={{ color: 'oklch(57% 0.14 40)' }}
+        >
+          <span className="material-symbols-outlined text-sm">arrow_back</span>
+          Terug naar dagboek
+        </button>
+        <h1
+          className="text-3xl font-medium mb-2"
+          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+        >
+          Ons reisverhaal
+        </h1>
+        <p className="text-xs text-on-surface-variant mb-6">Notre Voyage — Lot, Zuid-Frankrijk, 2025</p>
+        <div
+          className="rounded-2xl p-5 mb-6"
+          style={{ background: 'linear-gradient(145deg, oklch(94% 0.04 75), oklch(96% 0.025 60))', border: '1px solid #E4D9C8' }}
+        >
+          <p
+            className="text-base leading-relaxed whitespace-pre-wrap"
+            style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+          >
+            {reisverhaal}
+          </p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          className="w-full rounded-2xl border-2 py-3 text-sm font-semibold flex items-center justify-center gap-2"
+          style={{ borderColor: '#E4D9C8', color: '#6B5A3E' }}
+        >
+          <span className="material-symbols-outlined text-sm">print</span>
+          Afdrukken
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 pt-5">
       <div className="flex items-center justify-between mb-5">
@@ -150,6 +212,28 @@ export default function DagboekPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reisverhaal knop — alleen zichtbaar na 3+ entries */}
+      {filledEntries.length >= 3 && (
+        <button
+          onClick={generateReisverhaal}
+          disabled={generatingVerhaal}
+          className="w-full rounded-2xl p-4 mb-5 flex items-center gap-3 disabled:opacity-60"
+          style={{ background: 'linear-gradient(135deg, oklch(76% 0.18 83), oklch(66% 0.17 58))' }}
+        >
+          <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {generatingVerhaal ? 'refresh' : 'auto_stories'}
+          </span>
+          <div className="text-left">
+            <p className="font-semibold text-white">
+              {generatingVerhaal ? 'Reisverhaal schrijven…' : 'Maak ons reisverhaal'}
+            </p>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.8)' }}>
+              Claude schrijft een warm verhaal van jullie vakantie
+            </p>
+          </div>
+        </button>
       )}
 
       <div className="flex flex-col gap-3">
@@ -307,7 +391,7 @@ export default function DagboekPage() {
                         className="absolute top-2 right-4 text-6xl leading-none pointer-events-none select-none"
                         style={{ fontFamily: 'var(--font-journal)', color: 'oklch(57% 0.14 40)', opacity: 0.12 }}
                       >
-                        "
+                        &quot;
                       </div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <span className="text-xs" style={{ color: 'oklch(79% 0.16 83)' }}>✦</span>
