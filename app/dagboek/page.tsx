@@ -18,6 +18,7 @@ export default function DagboekPage() {
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [loadingPhotos, setLoadingPhotos] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/diary')
@@ -31,11 +32,20 @@ export default function DagboekPage() {
   }, [])
 
   const loadPhotos = async (date: string) => {
-    if (photos[date] || !session?.accessToken) return
-    const res = await fetch(`/api/photos?date=${date}`)
-    if (res.ok) {
-      const data = await res.json()
-      setPhotos(prev => ({ ...prev, [date]: data }))
+    if (photos[date] !== undefined || !session?.accessToken) return
+    setLoadingPhotos(date)
+    try {
+      const res = await fetch(`/api/photos?date=${date}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPhotos(prev => ({ ...prev, [date]: data }))
+      } else {
+        setPhotos(prev => ({ ...prev, [date]: [] }))
+      }
+    } catch {
+      setPhotos(prev => ({ ...prev, [date]: [] }))
+    } finally {
+      setLoadingPhotos(null)
     }
   }
 
@@ -89,13 +99,18 @@ export default function DagboekPage() {
     <div className="px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-on-surface">Dagboek</h1>
-        {session && (
-          <div className="flex items-center gap-1 text-xs text-green-600 font-semibold">
-            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-            Google Photos
-          </div>
-        )}
       </div>
+
+      {/* Google Photos connected success */}
+      {session && (
+        <div className="rounded-2xl bg-green-50 border border-green-200 p-3 mb-4 flex items-center gap-3">
+          <span className="material-symbols-outlined text-green-600" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          <div>
+            <p className="text-sm font-semibold text-green-800">Google Photos gekoppeld</p>
+            <p className="text-xs text-green-700">Klap een dag open om de foto's van die dag te zien.</p>
+          </div>
+        </div>
+      )}
 
       {/* Google Photos onboarding */}
       {!session && (
@@ -108,7 +123,7 @@ export default function DagboekPage() {
                 Koppel je Google account om foto's van de dag automatisch te zien bij elke dagboekkaart.
               </p>
               <button
-                onClick={() => signIn('google')}
+                onClick={() => signIn('google', { callbackUrl: '/dagboek' })}
                 className="mt-3 rounded-full bg-tertiary text-white text-sm font-bold px-4 py-2 flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>login</span>
@@ -152,7 +167,12 @@ export default function DagboekPage() {
                   {/* Photo strip */}
                   {session && (
                     <div className="mt-3 mb-3">
-                      {dayPhotos.length > 0 ? (
+                      {loadingPhotos === date ? (
+                        <div className="flex items-center gap-2 text-xs text-on-surface-variant py-1">
+                          <span className="material-symbols-outlined text-base animate-spin">refresh</span>
+                          Foto's laden…
+                        </div>
+                      ) : dayPhotos.length > 0 ? (
                         <div className="flex gap-2 overflow-x-auto pb-1">
                           {dayPhotos.slice(0, 6).map(p => (
                             <img
@@ -163,9 +183,9 @@ export default function DagboekPage() {
                             />
                           ))}
                         </div>
-                      ) : (
-                        <p className="text-xs text-on-surface-variant italic">Geen foto's gevonden voor deze dag.</p>
-                      )}
+                      ) : photos[date] !== undefined ? (
+                        <p className="text-xs text-on-surface-variant italic">Geen foto's op deze dag gevonden in Google Photos.</p>
+                      ) : null}
                     </div>
                   )}
 
