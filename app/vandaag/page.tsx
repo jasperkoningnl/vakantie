@@ -5,12 +5,12 @@ import { uitjes, Uitje } from '@/lib/uitjes'
 import { getSupabase } from '@/lib/supabase'
 
 const ACTIVITIES = [
-  { label: 'Iets voor Lena', icon: 'child_care', value: 'entertainment' },
-  { label: 'Kasteel of dorp', icon: 'castle', value: 'culture' },
-  { label: 'Water of bos', icon: 'forest', value: 'nature' },
-  { label: 'Lekker eten', icon: 'restaurant', value: 'food' },
-  { label: 'Boodschappen', icon: 'shopping_cart', value: 'shop' },
-  { label: 'Verras ons', icon: 'auto_awesome', value: 'surprise' },
+  { label: 'Iets voor Lena', icon: 'child_care',    value: 'entertainment', color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)' },
+  { label: 'Kasteel of dorp', icon: 'castle',        value: 'culture',       color: 'oklch(57% 0.14 40)',  bg: 'oklch(93% 0.05 40)' },
+  { label: 'Water of bos',    icon: 'forest',        value: 'nature',        color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)' },
+  { label: 'Lekker eten',     icon: 'restaurant',    value: 'food',          color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)' },
+  { label: 'Boodschappen',    icon: 'shopping_cart', value: 'shop',          color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)' },
+  { label: 'Verras ons',      icon: 'auto_awesome',  value: 'surprise',      color: 'oklch(68% 0.11 10)',  bg: 'oklch(93% 0.05 10)' },
 ]
 
 const DRIVE_TIMES = ['Max 30 min', 'Max 1 uur', 'Max 2 uur']
@@ -125,36 +125,42 @@ export default function VandaagPage() {
     setError(null)
   }
 
+  const dateStr = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
   return (
-    <div className="px-4 pt-6 pb-4">
-      {/* Header */}
+    <div className="px-4 pt-5 pb-4">
+      {/* Journal header */}
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-on-surface">Vandaag</h1>
-        <p className="text-sm text-on-surface-variant mt-0.5">
-          {new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
+        <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
+          Notre Voyage
+        </div>
+        <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
       </div>
 
       {/* Weer */}
-      <div className="rounded-2xl bg-tertiary/10 border border-tertiary/20 p-4 mb-6">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{weather ? wmoToEmoji(weather.current.weathercode) : '🌤️'}</span>
-          <div>
-            <p className="font-bold text-on-surface text-lg">
-              {weather ? `${Math.round(weather.current.temperature_2m)}°C` : '—'}
-            </p>
-            <p className="text-sm text-on-surface-variant">
-              {weather ? wmoToDescription(weather.current.weathercode) : 'Laden…'}
-            </p>
+      <div
+        className="rounded-2xl p-4 mb-5 flex items-center justify-between"
+        style={{ background: 'linear-gradient(135deg, oklch(76% 0.18 83), oklch(66% 0.17 58))' }}
+      >
+        <div>
+          <div className="text-4xl font-light leading-none mb-1" style={{ fontFamily: 'var(--font-journal)', color: 'white' }}>
+            {weather ? `${Math.round(weather.current.temperature_2m)}°` : '—°'}
           </div>
+          <div className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            {weather ? wmoToDescription(weather.current.weathercode) : 'Laden…'}
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>Les Escaliers</div>
+        </div>
+        <div className="text-right">
+          <div className="text-4xl">{weather ? wmoToEmoji(weather.current.weathercode) : '🌤️'}</div>
           {weather && (
-            <div className="ml-auto flex gap-3">
+            <div className="flex gap-3 mt-2">
               {weather.daily.temperature_2m_max.slice(0, 3).map((max, i) => (
                 <div key={i} className="text-center">
-                  <p className="text-xs text-on-surface-variant">
+                  <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.65)' }}>
                     {i === 0 ? 'Vnd' : i === 1 ? 'Mor' : 'Ovr'}
                   </p>
-                  <p className="text-xs font-semibold">{Math.round(max)}°</p>
+                  <p className="text-xs font-semibold" style={{ color: 'white' }}>{Math.round(max)}°</p>
                 </div>
               ))}
             </div>
@@ -164,13 +170,16 @@ export default function VandaagPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-2xl bg-red-50 border border-red-200 p-3 mb-4 flex items-start gap-2">
-          <span className="material-symbols-outlined text-red-500 text-base mt-0.5">error</span>
+        <div
+          className="rounded-2xl p-3 mb-4 flex items-start gap-2"
+          style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}
+        >
+          <span className="material-symbols-outlined text-base mt-0.5" style={{ color: '#EF4444' }}>error</span>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-red-700">Oeps, er ging iets mis</p>
-            <p className="text-xs text-red-600 mt-0.5">{error}</p>
+            <p className="text-sm font-semibold" style={{ color: '#B91C1C' }}>Oeps, er ging iets mis</p>
+            <p className="text-xs mt-0.5" style={{ color: '#DC2626' }}>{error}</p>
           </div>
-          <button onClick={() => setError(null)} className="text-red-400">
+          <button onClick={() => setError(null)} style={{ color: '#FCA5A5' }}>
             <span className="material-symbols-outlined text-base">close</span>
           </button>
         </div>
@@ -178,15 +187,19 @@ export default function VandaagPage() {
 
       {/* Basket banner */}
       {basketIds.length > 0 && phase === 'wizard' && (
-        <div className="rounded-2xl bg-secondary/20 border border-secondary/40 p-3 mb-4 flex items-center gap-3">
-          <span className="material-symbols-outlined text-on-surface">shopping_bag</span>
+        <div
+          className="rounded-2xl p-3 mb-4 flex items-center gap-3 border"
+          style={{ background: 'oklch(92% 0.07 83)', borderColor: 'oklch(79% 0.16 83)' }}
+        >
+          <span className="material-symbols-outlined" style={{ color: 'oklch(57% 0.14 40)' }}>shopping_bag</span>
           <div className="flex-1">
-            <p className="text-sm font-semibold">{basketIds.length} uitje{basketIds.length > 1 ? 's' : ''} geselecteerd</p>
+            <p className="text-sm font-semibold text-on-surface">{basketIds.length} uitje{basketIds.length > 1 ? 's' : ''} geselecteerd</p>
             <p className="text-xs text-on-surface-variant">vanuit de uitjes-browser</p>
           </div>
           <button
             onClick={handleBasketPlan}
-            className="rounded-full bg-primary text-white text-xs font-bold px-3 py-1.5"
+            className="rounded-full text-white text-xs font-bold px-3 py-1.5"
+            style={{ background: 'oklch(57% 0.14 40)' }}
           >
             Maak plan
           </button>
@@ -196,45 +209,64 @@ export default function VandaagPage() {
       {/* Wizard */}
       {phase === 'wizard' && (
         <div>
-          <h2 className="font-bold text-on-surface mb-3">Wat willen jullie vandaag?</h2>
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            {ACTIVITIES.map(a => (
-              <button
-                key={a.value}
-                onClick={() => setActivity(a.value)}
-                className={`rounded-2xl border-2 p-4 flex flex-col items-center gap-2 transition-all ${
-                  activity === a.value
-                    ? 'border-primary bg-primary/10'
-                    : 'border-outline-variant bg-surface'
-                }`}
-              >
-                {activity === a.value && (
-                  <span className="material-symbols-outlined text-primary text-sm self-end -mb-5 -mr-1" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                )}
-                <span
-                  className={`material-symbols-outlined text-4xl ${activity === a.value ? 'text-primary' : 'text-on-surface-variant'}`}
-                  style={{ fontVariationSettings: "'FILL' 1" }}
+          <h2
+            className="text-2xl mb-3 leading-tight"
+            style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}
+          >
+            Wat willen jullie<br />vandaag doen?
+          </h2>
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            {ACTIVITIES.map(a => {
+              const isSel = activity === a.value
+              return (
+                <button
+                  key={a.value}
+                  onClick={() => setActivity(a.value)}
+                  className="rounded-2xl p-4 flex flex-col items-start gap-2.5 text-left transition-all"
+                  style={{
+                    background: isSel ? a.bg : '#FAF7F0',
+                    border: `2px solid ${isSel ? a.color : '#E4D9C8'}`,
+                    boxShadow: isSel ? `0 2px 12px ${a.color}30` : '0 1px 4px rgba(44,35,22,0.07)',
+                  }}
                 >
-                  {a.icon}
-                </span>
-                <span className={`text-sm font-semibold text-center ${activity === a.value ? 'text-primary' : 'text-on-surface'}`}>
-                  {a.label}
-                </span>
-              </button>
-            ))}
+                  <span
+                    className="material-symbols-outlined text-3xl"
+                    style={{ color: a.color, fontVariationSettings: "'FILL' 1" }}
+                  >
+                    {a.icon}
+                  </span>
+                  <span className="text-sm font-semibold" style={{ color: isSel ? a.color : '#2C2316' }}>
+                    {a.label}
+                  </span>
+                  {isSel && (
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center self-end -mt-2"
+                      style={{ background: a.color }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </div>
 
-          <h2 className="font-bold text-on-surface mb-3">Hoelang rijden?</h2>
-          <div className="flex gap-2 mb-6">
+          <div className="text-[10px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: '#A8937A' }}>
+            Hoe ver mogen we rijden?
+          </div>
+          <div className="flex gap-2 mb-5">
             {DRIVE_TIMES.map(t => (
               <button
                 key={t}
                 onClick={() => setDriveTime(t)}
-                className={`flex-1 rounded-full py-2 text-sm font-bold border-2 transition-all ${
-                  driveTime === t
-                    ? 'bg-primary border-primary text-white'
-                    : 'bg-surface border-outline-variant text-on-surface'
-                }`}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2 transition-all"
+                style={{
+                  background: driveTime === t ? 'oklch(57% 0.14 40)' : '#FAF7F0',
+                  borderColor: driveTime === t ? 'oklch(57% 0.14 40)' : '#E4D9C8',
+                  color: driveTime === t ? 'white' : '#6B5A3E',
+                }}
               >
                 {t}
               </button>
@@ -244,22 +276,24 @@ export default function VandaagPage() {
           <button
             onClick={handleSuggest}
             disabled={!activity || !driveTime}
-            className="w-full rounded-full bg-primary text-white font-bold py-4 text-base disabled:opacity-40 transition-opacity"
+            className="w-full rounded-2xl py-4 text-white font-semibold text-base disabled:opacity-40 transition-opacity flex items-center justify-center gap-2"
+            style={{ background: 'oklch(57% 0.14 40)' }}
           >
-            Maak dagplan →
+            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+            Maak ons dagplan
           </button>
 
           {/* Uitjes preview */}
           <div className="mt-8">
-            <h2 className="font-bold text-on-surface mb-3 flex items-center gap-2">
-              <span className="material-symbols-outlined text-base text-on-surface-variant">explore</span>
+            <div className="text-[10px] font-semibold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: '#A8937A' }}>
+              <span className="material-symbols-outlined text-sm" style={{ color: '#A8937A' }}>explore</span>
               Of kies zelf uit de uitjes
-            </h2>
+            </div>
             <div className="flex flex-col gap-3">
               {uitjes.slice(0, 4).map(u => (
                 <UitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={toggleBasket} />
               ))}
-              <a href="/uitjes" className="text-center text-sm text-tertiary font-semibold py-2">
+              <a href="/uitjes" className="text-center text-sm font-semibold py-2" style={{ color: 'oklch(65% 0.10 218)' }}>
                 Alle uitjes bekijken →
               </a>
             </div>
@@ -270,8 +304,8 @@ export default function VandaagPage() {
       {/* Suggesting loader */}
       {phase === 'suggesting' && (
         <div className="text-center py-16">
-          <span className="material-symbols-outlined text-5xl text-primary animate-spin">refresh</span>
-          <p className="mt-4 text-on-surface font-semibold">Even nadenken…</p>
+          <span className="material-symbols-outlined text-5xl animate-spin" style={{ color: 'oklch(57% 0.14 40)' }}>refresh</span>
+          <p className="mt-4 font-semibold text-on-surface">Even nadenken…</p>
           <p className="text-sm text-on-surface-variant mt-1">Claude zoekt de beste uitjes voor jullie</p>
         </div>
       )}
@@ -279,9 +313,14 @@ export default function VandaagPage() {
       {/* Suggestion selection */}
       {phase === 'selectSuggestion' && (
         <div>
-          <h2 className="font-bold text-on-surface mb-1">Kies wat jullie aanspreekt</h2>
+          <h2
+            className="text-xl mb-1"
+            style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+          >
+            Kies wat jullie aanspreekt
+          </h2>
           <p className="text-sm text-on-surface-variant mb-4">Selecteer één of meerdere suggesties, dan maak ik het volledige plan.</p>
-          <div className="flex flex-col gap-3 mb-6">
+          <div className="flex flex-col gap-3 mb-5">
             {suggestions.map(s => (
               <button
                 key={s.id}
@@ -290,16 +329,21 @@ export default function VandaagPage() {
                     prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
                   )
                 }
-                className={`rounded-2xl border-2 p-4 text-left transition-all ${
-                  selectedSuggestions.includes(s.id)
-                    ? 'border-primary bg-primary/10'
-                    : 'border-outline-variant bg-surface'
-                }`}
+                className="rounded-2xl border-2 p-4 text-left transition-all"
+                style={{
+                  background: selectedSuggestions.includes(s.id) ? 'oklch(93% 0.05 40)' : '#FAF7F0',
+                  borderColor: selectedSuggestions.includes(s.id) ? 'oklch(57% 0.14 40)' : '#E4D9C8',
+                }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-bold text-on-surface">{s.naam}</p>
+                  <p className="font-semibold text-on-surface">{s.naam}</p>
                   {selectedSuggestions.includes(s.id) && (
-                    <span className="material-symbols-outlined text-primary flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    <span
+                      className="material-symbols-outlined flex-shrink-0"
+                      style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}
+                    >
+                      check_circle
+                    </span>
                   )}
                 </div>
                 <p className="text-sm text-on-surface-variant mt-1">{s.reden}</p>
@@ -310,14 +354,16 @@ export default function VandaagPage() {
           <div className="flex gap-3">
             <button
               onClick={reset}
-              className="flex-1 rounded-full border-2 border-outline-variant py-3 text-sm font-bold text-on-surface"
+              className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold text-on-surface"
+              style={{ borderColor: '#E4D9C8' }}
             >
               ← Terug
             </button>
             <button
               onClick={() => handlePlan(selectedSuggestions)}
               disabled={selectedSuggestions.length === 0}
-              className="flex-[2] rounded-full bg-primary text-white font-bold py-3 disabled:opacity-40"
+              className="flex-[2] rounded-2xl text-white font-semibold py-3 disabled:opacity-40"
+              style={{ background: 'oklch(57% 0.14 40)' }}
             >
               Maak dagplan →
             </button>
@@ -328,8 +374,8 @@ export default function VandaagPage() {
       {/* Planning loader */}
       {phase === 'planning' && (
         <div className="text-center py-16">
-          <span className="material-symbols-outlined text-5xl text-primary animate-spin">refresh</span>
-          <p className="mt-4 text-on-surface font-semibold">Dagplan samenstellen…</p>
+          <span className="material-symbols-outlined text-5xl animate-spin" style={{ color: 'oklch(57% 0.14 40)' }}>refresh</span>
+          <p className="mt-4 font-semibold text-on-surface">Dagplan samenstellen…</p>
           <p className="text-sm text-on-surface-variant mt-1">Even geduld, dit duurt 10-20 seconden</p>
         </div>
       )}
@@ -338,23 +384,34 @@ export default function VandaagPage() {
       {phase === 'plan' && dayPlan && (
         <div>
           {dayPlan.intro && (
-            <p className="text-on-surface-variant mb-5 italic text-sm">{dayPlan.intro}</p>
+            <p
+              className="mb-4 text-base leading-relaxed"
+              style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#6B5A3E' }}
+            >
+              {dayPlan.intro}
+            </p>
           )}
 
           {/* Timeline */}
-          <div className="relative mb-6">
-            <div className="absolute left-[18px] top-0 bottom-0 w-0.5 bg-outline-variant" />
+          <div className="relative mb-5">
+            <div className="absolute left-[18px] top-0 bottom-0 w-0.5" style={{ background: '#E4D9C8' }} />
             {dayPlan.stops.map((stop, i) => (
-              <div key={i} className="relative flex gap-4 mb-5">
-                <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm flex-shrink-0 z-10">
+              <div key={i} className="relative flex gap-4 mb-4">
+                <div
+                  className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm flex-shrink-0 z-10"
+                  style={{ background: 'oklch(57% 0.14 40)' }}
+                >
                   {i + 1}
                 </div>
-                <div className="flex-1 rounded-2xl bg-surface border border-outline-variant p-4 shadow-blue">
-                  <span className="text-xs font-bold text-primary">{stop.time}</span>
-                  <h3 className="font-bold text-on-surface mt-0.5">{stop.name}</h3>
+                <div
+                  className="flex-1 rounded-2xl p-4 shadow-blue"
+                  style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+                >
+                  <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
+                  <h3 className="font-semibold text-on-surface mt-0.5">{stop.name}</h3>
                   <p className="text-sm text-on-surface-variant mt-1">{stop.description}</p>
                   {stop.tip && (
-                    <p className="text-xs text-tertiary mt-2 flex items-center gap-1">
+                    <p className="text-xs mt-2 flex items-center gap-1" style={{ color: 'oklch(65% 0.10 218)' }}>
                       <span className="material-symbols-outlined text-sm">tips_and_updates</span>
                       {stop.tip}
                     </p>
@@ -364,7 +421,8 @@ export default function VandaagPage() {
                       href={stop.mapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-tertiary"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: 'oklch(65% 0.10 218)' }}
                     >
                       <span className="material-symbols-outlined text-sm">map</span>
                       Navigeer
@@ -377,14 +435,24 @@ export default function VandaagPage() {
 
           {/* Checklist */}
           {dayPlan.checklist && dayPlan.checklist.length > 0 && (
-            <div className="rounded-2xl bg-secondary/20 border border-secondary/40 p-4 mb-4">
-              <h3 className="font-bold text-on-surface mb-2 flex items-center gap-2">
-                <span className="material-symbols-outlined text-base">checklist</span>
+            <div
+              className="rounded-2xl p-4 mb-4 border"
+              style={{ background: 'oklch(92% 0.07 83)', borderColor: 'oklch(79% 0.16 83)' }}
+            >
+              <h3
+                className="font-semibold mb-2 flex items-center gap-2"
+                style={{ fontFamily: 'var(--font-hand)', fontSize: '17px', color: '#2C2316' }}
+              >
+                <span className="material-symbols-outlined text-base" style={{ color: 'oklch(79% 0.16 83)' }}>checklist</span>
                 Vergeet niet
               </h3>
               <div className="flex flex-wrap gap-2">
                 {[...new Set([...dayPlan.checklist, ...(CHECKLISTS[activity || 'surprise'] || [])])].map(item => (
-                  <span key={item} className="rounded-full bg-white border border-outline-variant text-xs px-3 py-1 font-medium">
+                  <span
+                    key={item}
+                    className="rounded-full text-xs px-3 py-1 font-medium"
+                    style={{ background: 'white', border: '1px solid #E4D9C8', color: '#6B5A3E' }}
+                  >
                     {item}
                   </span>
                 ))}
@@ -392,7 +460,11 @@ export default function VandaagPage() {
             </div>
           )}
 
-          <button onClick={reset} className="w-full rounded-full border-2 border-outline-variant py-3 text-sm font-bold text-on-surface">
+          <button
+            onClick={reset}
+            className="w-full rounded-2xl border-2 py-3 text-sm font-semibold text-on-surface"
+            style={{ borderColor: '#E4D9C8' }}
+          >
             Nieuw plan maken
           </button>
         </div>
@@ -403,10 +475,10 @@ export default function VandaagPage() {
 
 function UitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: boolean; onToggle: (id: string) => void }) {
   const typeColors: Record<string, string> = {
-    entertainment: 'text-primary',
-    culture: 'text-tertiary',
-    food: 'text-on-surface',
-    shop: 'text-green-600',
+    entertainment: 'oklch(79% 0.16 83)',
+    culture:       'oklch(57% 0.14 40)',
+    food:          'oklch(65% 0.09 298)',
+    shop:          'oklch(65% 0.10 218)',
   }
   const typeIcons: Record<string, string> = {
     entertainment: 'attractions',
@@ -414,26 +486,41 @@ function UitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: bool
     food: 'restaurant',
     shop: 'shopping_cart',
   }
+  const c = typeColors[uitje.type] || 'oklch(57% 0.14 40)'
 
   return (
-    <div className="rounded-2xl bg-surface border border-outline-variant p-3 flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-full bg-white border border-outline-variant flex items-center justify-center ${typeColors[uitje.type]}`}>
-        <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+    <div
+      className="rounded-2xl p-3 flex items-center gap-3 shadow-blue"
+      style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+    >
+      <div
+        className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+        style={{ background: `${c}20` }}
+      >
+        <span className="material-symbols-outlined" style={{ color: c, fontVariationSettings: "'FILL' 1" }}>
           {typeIcons[uitje.type]}
         </span>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-bold text-sm text-on-surface truncate">{uitje.name}</p>
-          <span className="text-xs text-on-surface-variant bg-outline-variant/50 rounded-full px-2 py-0.5 flex-shrink-0">{uitje.drive}</span>
+          <p className="font-semibold text-sm text-on-surface truncate">{uitje.name}</p>
+          <span
+            className="text-xs rounded-full px-2 py-0.5 flex-shrink-0 font-medium"
+            style={{ background: '#F0E9DA', color: '#6B5A3E' }}
+          >
+            {uitje.drive}
+          </span>
         </div>
         <p className="text-xs text-on-surface-variant truncate">{uitje.desc}</p>
       </div>
       <button
         onClick={() => onToggle(uitje.id)}
-        className={`rounded-full text-xs font-bold px-3 py-1.5 flex-shrink-0 transition-all ${
-          inBasket ? 'bg-primary text-white' : 'bg-outline-variant/50 text-on-surface'
-        }`}
+        className="rounded-full text-xs font-bold px-3 py-1.5 flex-shrink-0 transition-all"
+        style={
+          inBasket
+            ? { background: 'oklch(57% 0.14 40)', color: 'white' }
+            : { background: '#F0E9DA', color: '#6B5A3E' }
+        }
       >
         {inBasket ? '✓' : '+'}
       </button>

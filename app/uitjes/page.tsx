@@ -6,12 +6,12 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
 const FILTERS: { label: string; value: UitjeType | 'all' | 'lena' }[] = [
-  { label: 'Alles', value: 'all' },
-  { label: 'Lena', value: 'lena' },
-  { label: 'Cultuur', value: 'culture' },
-  { label: 'Natuur', value: 'entertainment' },
-  { label: 'Eten', value: 'food' },
-  { label: 'Boodschappen', value: 'shop' },
+  { label: 'Alles',       value: 'all' },
+  { label: 'Lena',        value: 'lena' },
+  { label: 'Cultuur',     value: 'culture' },
+  { label: 'Natuur',      value: 'entertainment' },
+  { label: 'Eten',        value: 'food' },
+  { label: 'Boodschappen',value: 'shop' },
 ]
 
 const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14']
@@ -24,10 +24,10 @@ const TYPE_ICONS: Record<string, string> = {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  entertainment: 'bg-primary/20 text-primary',
-  culture: 'bg-tertiary/20 text-tertiary',
-  food: 'bg-secondary/40 text-on-surface',
-  shop: 'bg-green-100 text-green-700',
+  entertainment: 'oklch(79% 0.16 83)',
+  culture:       'oklch(57% 0.14 40)',
+  food:          'oklch(65% 0.09 298)',
+  shop:          'oklch(65% 0.10 218)',
 }
 
 export default function UitjesPage() {
@@ -62,18 +62,30 @@ export default function UitjesPage() {
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="px-4 pt-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-on-surface">Uitjes</h1>
-        <div className="flex rounded-full border border-outline-variant overflow-hidden">
+        <h1
+          className="text-3xl font-medium"
+          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+        >
+          Uitjes
+        </h1>
+        {/* List / Kaart toggle */}
+        <div
+          className="flex rounded-xl overflow-hidden p-0.5"
+          style={{ background: '#F0E9DA' }}
+        >
           {(['list', 'map'] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-1.5 text-sm font-semibold transition-colors ${
-                view === v ? 'bg-primary text-white' : 'text-on-surface-variant'
-              }`}
+              className="px-4 py-1.5 text-sm font-semibold rounded-lg transition-all"
+              style={
+                view === v
+                  ? { background: '#FAF7F0', color: '#2C2316', boxShadow: '0 1px 3px rgba(44,35,22,0.1)' }
+                  : { color: '#A8937A' }
+              }
             >
               {v === 'list' ? 'Lijst' : 'Kaart'}
             </button>
@@ -82,16 +94,17 @@ export default function UitjesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 no-scrollbar">
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4" style={{ scrollbarWidth: 'none' }}>
         {FILTERS.map(f => (
           <button
             key={f.value}
             onClick={() => setFilter(f.value)}
-            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold border transition-all ${
+            className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold border transition-all"
+            style={
               filter === f.value
-                ? 'bg-primary border-primary text-white'
-                : 'bg-surface border-outline-variant text-on-surface'
-            }`}
+                ? { background: 'oklch(57% 0.14 40)', borderColor: 'oklch(57% 0.14 40)', color: 'white' }
+                : { background: '#FAF7F0', borderColor: '#E4D9C8', color: '#6B5A3E' }
+            }
           >
             {f.label}
           </button>
@@ -100,7 +113,10 @@ export default function UitjesPage() {
 
       {/* Map view */}
       {view === 'map' && (
-        <div className="h-[calc(100vh-220px)] rounded-2xl overflow-hidden mb-4 shadow-blue">
+        <div
+          className="rounded-2xl overflow-hidden mb-4 shadow-blue"
+          style={{ height: 'calc(100vh - 220px)', border: '1px solid #E4D9C8' }}
+        >
           <UitjesMap
             uitjes={filtered}
             selected={selectedMapId}
@@ -123,14 +139,18 @@ export default function UitjesPage() {
       {/* Basket bar */}
       {basketIds.length > 0 && (
         <div className="fixed bottom-20 inset-x-0 px-4 z-40">
-          <div className="max-w-md mx-auto rounded-2xl bg-on-surface text-white p-3 flex items-center gap-3 shadow-lg">
-            <span className="material-symbols-outlined text-secondary">shopping_bag</span>
-            <p className="flex-1 text-sm font-semibold">
+          <div
+            className="max-w-md mx-auto rounded-2xl p-3 flex items-center gap-3"
+            style={{ background: '#2C2316', boxShadow: '0 4px 20px rgba(44,35,22,0.3)' }}
+          >
+            <span className="material-symbols-outlined" style={{ color: 'oklch(79% 0.16 83)' }}>shopping_bag</span>
+            <p className="flex-1 text-sm font-semibold text-white">
               {basketIds.length} uitje{basketIds.length > 1 ? 's' : ''} in je plan
             </p>
             <a
               href="/vandaag"
-              className="rounded-full bg-primary text-white text-xs font-bold px-3 py-1.5"
+              className="rounded-full text-white text-xs font-bold px-3 py-1.5"
+              style={{ background: 'oklch(57% 0.14 40)' }}
             >
               Maak dagplan →
             </a>
@@ -152,41 +172,76 @@ function UitjeCard({
   onToggle: (id: string) => void
   onSpeak: (text: string) => void
 }) {
+  const c = TYPE_COLORS[uitje.type] || 'oklch(57% 0.14 40)'
+
   return (
-    <div className="rounded-2xl bg-surface border border-outline-variant p-4 shadow-blue">
+    <div
+      className="rounded-2xl p-4 shadow-blue"
+      style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+    >
       <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${TYPE_COLORS[uitje.type]}`}>
-          <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ background: `${c}20` }}
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: c, fontVariationSettings: "'FILL' 1" }}
+          >
             {TYPE_ICONS[uitje.type]}
           </span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-bold text-on-surface">{uitje.name}</h3>
-            <span className="text-xs font-semibold bg-outline-variant/60 rounded-full px-2 py-0.5 flex-shrink-0">
+            <h3 className="font-semibold text-on-surface">{uitje.name}</h3>
+            <span
+              className="text-xs font-semibold rounded-full px-2 py-0.5 flex-shrink-0"
+              style={{ background: '#F0E9DA', color: '#6B5A3E' }}
+            >
               {uitje.drive}
             </span>
           </div>
           <p className="text-sm text-on-surface-variant mt-1 line-clamp-2">{uitje.desc}</p>
           {uitje.vegetarian && (
-            <span className="inline-flex items-center gap-1 text-xs text-green-700 font-medium mt-1">
+            <span className="inline-flex items-center gap-1 text-xs font-medium mt-1" style={{ color: 'oklch(58% 0.10 148)' }}>
               🌿 Vegetarisch
             </span>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-outline-variant">
-        <a href={uitje.gmaps} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-tertiary">
+      <div
+        className="flex items-center gap-3 mt-3 pt-3"
+        style={{ borderTop: '1px solid #E4D9C8' }}
+      >
+        <a
+          href={uitje.gmaps}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-semibold"
+          style={{ color: 'oklch(65% 0.10 218)' }}
+        >
           Maps
         </a>
         {uitje.wiki && (
-          <a href={uitje.wiki} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-tertiary">
+          <a
+            href={uitje.wiki}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold"
+            style={{ color: 'oklch(65% 0.10 218)' }}
+          >
             Wikipedia
           </a>
         )}
         {uitje.site && (
-          <a href={uitje.site} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-tertiary">
+          <a
+            href={uitje.site}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold"
+            style={{ color: 'oklch(65% 0.10 218)' }}
+          >
             Website
           </a>
         )}
@@ -199,9 +254,12 @@ function UitjeCard({
         </button>
         <button
           onClick={() => onToggle(uitje.id)}
-          className={`ml-auto rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
-            inBasket ? 'bg-primary text-white' : 'bg-primary/10 text-primary border border-primary/30'
-          }`}
+          className="ml-auto rounded-full px-4 py-1.5 text-xs font-bold transition-all"
+          style={
+            inBasket
+              ? { background: 'oklch(57% 0.14 40)', color: 'white' }
+              : { background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '1px solid #E4D9C8' }
+          }
         >
           {inBasket ? '✓ Toegevoegd' : 'Voeg toe aan vandaag'}
         </button>
