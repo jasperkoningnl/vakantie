@@ -89,21 +89,35 @@ export default function DagboekPage() {
     <div className="px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-on-surface">Dagboek</h1>
-        {!session ? (
-          <button
-            onClick={() => signIn('google')}
-            className="rounded-full bg-tertiary text-white text-xs font-bold px-3 py-1.5 flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-sm">photo_library</span>
-            Foto's koppelen
-          </button>
-        ) : (
+        {session && (
           <div className="flex items-center gap-1 text-xs text-green-600 font-semibold">
             <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
             Google Photos
           </div>
         )}
       </div>
+
+      {/* Google Photos onboarding */}
+      {!session && (
+        <div className="rounded-2xl bg-tertiary/10 border border-tertiary/20 p-4 mb-5">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-tertiary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+            <div className="flex-1">
+              <p className="font-bold text-on-surface">Koppel Google Photos</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Koppel je Google account om foto's van de dag automatisch te zien bij elke dagboekkaart.
+              </p>
+              <button
+                onClick={() => signIn('google')}
+                className="mt-3 rounded-full bg-tertiary text-white text-sm font-bold px-4 py-2 flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>login</span>
+                Inloggen met Google
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {VACATION_DAYS.map(date => {

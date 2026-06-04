@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { WeatherData, wmoToDescription, wmoToEmoji, Suggestion, DayPlan } from '@/lib/types'
 import { uitjes, Uitje } from '@/lib/uitjes'
 import { getSupabase } from '@/lib/supabase'
@@ -35,6 +35,7 @@ export default function VandaagPage() {
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([])
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null)
   const [basketIds, setBasketIds] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(
@@ -52,8 +53,9 @@ export default function VandaagPage() {
     ? `${wmoToEmoji(weather.current.weathercode)} ${Math.round(weather.current.temperature_2m)}°C — ${wmoToDescription(weather.current.weathercode)}`
     : 'Weerbericht laden…'
 
-  const handleSuggest = useCallback(async () => {
+  const handleSuggest = async () => {
     if (!activity || !driveTime) return
+    setError(null)
     setPhase('suggesting')
     try {
       const res = await fetch('/api/plan', {
@@ -61,23 +63,31 @@ export default function VandaagPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phase: 'suggest', activity, driveTime, weather: weatherDesc }),
       })
+      if (!res.ok) throw new Error(`Server: ${res.status}`)
       const data = await res.json()
+      if (data.error) throw new Error(data.error)
       setSuggestions(data.suggesties || [])
       setPhase('selectSuggestion')
-    } catch {
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Er ging iets mis. Probeer opnieuw.')
       setPhase('wizard')
     }
-  }, [activity, driveTime, weatherDesc])
+  }
 
-  const handlePlan = useCallback(async (ids: string[]) => {
+  const handlePlan = async (ids: string[], activityOverride?: string, driveTimeOverride?: string) => {
+    setError(null)
     setPhase('planning')
+    const act = activityOverride ?? activity
+    const dt = driveTimeOverride ?? driveTime
     try {
       const res = await fetch('/api/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phase: 'plan', activity, driveTime, weather: weatherDesc, selectedIds: ids }),
+        body: JSON.stringify({ phase: 'plan', activity: act, driveTime: dt, weather: weatherDesc, selectedIds: ids }),
       })
+      if (!res.ok) throw new Error(`Server: ${res.status}`)
       const data = await res.json()
+      if (data.error) throw new Error(data.error)
       setDayPlan(data)
       setPhase('plan')
 
@@ -86,17 +96,16 @@ export default function VandaagPage() {
         { date: today, plan_text: JSON.stringify(data) },
         { onConflict: 'date' }
       )
-    } catch {
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Er ging iets mis. Probeer opnieuw.')
       setPhase('selectSuggestion')
     }
-  }, [activity, driveTime, weatherDesc])
+  }
 
-  const handleBasketPlan = useCallback(async () => {
+  const handleBasketPlan = async () => {
     if (basketIds.length === 0) return
-    setActivity('surprise')
-    setDriveTime('Max 2 uur')
-    await handlePlan(basketIds)
-  }, [basketIds, handlePlan])
+    await handlePlan(basketIds, 'surprise', 'Max 2 uur')
+  }
 
   const toggleBasket = (id: string) => {
     setBasketIds(prev => {
@@ -104,6 +113,16 @@ export default function VandaagPage() {
       localStorage.setItem('dagplan_basket', JSON.stringify(next))
       return next
     })
+  }
+
+  const reset = () => {
+    setPhase('wizard')
+    setActivity(null)
+    setDriveTime(null)
+    setSuggestions([])
+    setSelectedSuggestions([])
+    setDayPlan(null)
+    setError(null)
   }
 
   return (
@@ -129,7 +148,7 @@ export default function VandaagPage() {
             </p>
           </div>
           {weather && (
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex gap-3">
               {weather.daily.temperature_2m_max.slice(0, 3).map((max, i) => (
                 <div key={i} className="text-center">
                   <p className="text-xs text-on-surface-variant">
@@ -142,6 +161,20 @@ export default function VandaagPage() {
           )}
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-2xl bg-red-50 border border-red-200 p-3 mb-4 flex items-start gap-2">
+          <span className="material-symbols-outlined text-red-500 text-base mt-0.5">error</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-700">Oeps, er ging iets mis</p>
+            <p className="text-xs text-red-600 mt-0.5">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-400">
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
+      )}
 
       {/* Basket banner */}
       {basketIds.length > 0 && phase === 'wizard' && (
@@ -215,22 +248,39 @@ export default function VandaagPage() {
           >
             Maak dagplan →
           </button>
+
+          {/* Uitjes preview */}
+          <div className="mt-8">
+            <h2 className="font-bold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-base text-on-surface-variant">explore</span>
+              Of kies zelf uit de uitjes
+            </h2>
+            <div className="flex flex-col gap-3">
+              {uitjes.slice(0, 4).map(u => (
+                <UitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={toggleBasket} />
+              ))}
+              <a href="/uitjes" className="text-center text-sm text-tertiary font-semibold py-2">
+                Alle uitjes bekijken →
+              </a>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Suggesting loader */}
       {phase === 'suggesting' && (
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-4xl text-primary animate-spin">refresh</span>
-          <p className="mt-4 text-on-surface-variant font-medium">Even nadenken…</p>
+        <div className="text-center py-16">
+          <span className="material-symbols-outlined text-5xl text-primary animate-spin">refresh</span>
+          <p className="mt-4 text-on-surface font-semibold">Even nadenken…</p>
+          <p className="text-sm text-on-surface-variant mt-1">Claude zoekt de beste uitjes voor jullie</p>
         </div>
       )}
 
       {/* Suggestion selection */}
       {phase === 'selectSuggestion' && (
         <div>
-          <h2 className="font-bold text-on-surface mb-1">Kies een suggestie</h2>
-          <p className="text-sm text-on-surface-variant mb-4">Selecteer wat jullie aantrekt, dan maak ik het volledige plan.</p>
+          <h2 className="font-bold text-on-surface mb-1">Kies wat jullie aanspreekt</h2>
+          <p className="text-sm text-on-surface-variant mb-4">Selecteer één of meerdere suggesties, dan maak ik het volledige plan.</p>
           <div className="flex flex-col gap-3 mb-6">
             {suggestions.map(s => (
               <button
@@ -249,7 +299,7 @@ export default function VandaagPage() {
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-bold text-on-surface">{s.naam}</p>
                   {selectedSuggestions.includes(s.id) && (
-                    <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    <span className="material-symbols-outlined text-primary flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   )}
                 </div>
                 <p className="text-sm text-on-surface-variant mt-1">{s.reden}</p>
@@ -259,7 +309,7 @@ export default function VandaagPage() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => setPhase('wizard')}
+              onClick={reset}
               className="flex-1 rounded-full border-2 border-outline-variant py-3 text-sm font-bold text-on-surface"
             >
               ← Terug
@@ -277,9 +327,10 @@ export default function VandaagPage() {
 
       {/* Planning loader */}
       {phase === 'planning' && (
-        <div className="text-center py-12">
-          <span className="material-symbols-outlined text-4xl text-primary animate-spin">refresh</span>
-          <p className="mt-4 text-on-surface-variant font-medium">Dagplan samenstellen…</p>
+        <div className="text-center py-16">
+          <span className="material-symbols-outlined text-5xl text-primary animate-spin">refresh</span>
+          <p className="mt-4 text-on-surface font-semibold">Dagplan samenstellen…</p>
+          <p className="text-sm text-on-surface-variant mt-1">Even geduld, dit duurt 10-20 seconden</p>
         </div>
       )}
 
@@ -287,7 +338,7 @@ export default function VandaagPage() {
       {phase === 'plan' && dayPlan && (
         <div>
           {dayPlan.intro && (
-            <p className="text-on-surface-variant mb-4 italic">{dayPlan.intro}</p>
+            <p className="text-on-surface-variant mb-5 italic text-sm">{dayPlan.intro}</p>
           )}
 
           {/* Timeline */}
@@ -299,10 +350,8 @@ export default function VandaagPage() {
                   {i + 1}
                 </div>
                 <div className="flex-1 rounded-2xl bg-surface border border-outline-variant p-4 shadow-blue">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-primary">{stop.time}</span>
-                  </div>
-                  <h3 className="font-bold text-on-surface">{stop.name}</h3>
+                  <span className="text-xs font-bold text-primary">{stop.time}</span>
+                  <h3 className="font-bold text-on-surface mt-0.5">{stop.name}</h3>
                   <p className="text-sm text-on-surface-variant mt-1">{stop.description}</p>
                   {stop.tip && (
                     <p className="text-xs text-tertiary mt-2 flex items-center gap-1">
@@ -334,7 +383,7 @@ export default function VandaagPage() {
                 Vergeet niet
               </h3>
               <div className="flex flex-wrap gap-2">
-                {[...new Set([...dayPlan.checklist, ...( CHECKLISTS[activity || 'surprise'] || [])])].map(item => (
+                {[...new Set([...dayPlan.checklist, ...(CHECKLISTS[activity || 'surprise'] || [])])].map(item => (
                   <span key={item} className="rounded-full bg-white border border-outline-variant text-xs px-3 py-1 font-medium">
                     {item}
                   </span>
@@ -343,37 +392,9 @@ export default function VandaagPage() {
             </div>
           )}
 
-          <button
-            onClick={() => {
-              setPhase('wizard')
-              setActivity(null)
-              setDriveTime(null)
-              setSuggestions([])
-              setSelectedSuggestions([])
-              setDayPlan(null)
-            }}
-            className="w-full rounded-full border-2 border-outline-variant py-3 text-sm font-bold text-on-surface"
-          >
+          <button onClick={reset} className="w-full rounded-full border-2 border-outline-variant py-3 text-sm font-bold text-on-surface">
             Nieuw plan maken
           </button>
-        </div>
-      )}
-
-      {/* Uitjes basket section at bottom */}
-      {phase === 'wizard' && (
-        <div className="mt-8">
-          <h2 className="font-bold text-on-surface mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-base text-on-surface-variant">explore</span>
-            Of kies zelf uit de uitjes
-          </h2>
-          <div className="flex flex-col gap-3">
-            {uitjes.slice(0, 4).map(u => (
-              <UitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={toggleBasket} />
-            ))}
-            <a href="/uitjes" className="text-center text-sm text-tertiary font-semibold py-2">
-              Alle uitjes bekijken →
-            </a>
-          </div>
         </div>
       )}
     </div>
@@ -384,7 +405,7 @@ function UitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: bool
   const typeColors: Record<string, string> = {
     entertainment: 'text-primary',
     culture: 'text-tertiary',
-    food: 'text-secondary',
+    food: 'text-on-surface',
     shop: 'text-green-600',
   }
   const typeIcons: Record<string, string> = {
@@ -396,8 +417,8 @@ function UitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: bool
 
   return (
     <div className="rounded-2xl bg-surface border border-outline-variant p-3 flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-full bg-surface flex items-center justify-center ${typeColors[uitje.type]}`}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+      <div className={`w-10 h-10 rounded-full bg-white border border-outline-variant flex items-center justify-center ${typeColors[uitje.type]}`}>
+        <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
           {typeIcons[uitje.type]}
         </span>
       </div>
