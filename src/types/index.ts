@@ -1,0 +1,10 @@
+export type PlaceCategory='stay'|'route-stop'|'lake'|'woods'|'castle'|'playground'|'restaurant'|'patisserie'|'zoo'|'amusement-park'|'beautiful-park'|'supermarket'|'pharmacy'|'hospital'|'dentist'|'fuel'|'culture'|'practical';
+export type Coordinates={lat:number;lng:number};
+export type LinkSet={googleMaps?:string;official?:string;wikipedia?:string};
+export type Place={id:string;name:string;category:PlaceCategory;description:string;coordinates?:Coordinates;address?:string;driveTimeMinutes?:number;lenaScore?:1|2|3|4|5;indoor?:boolean;shade?:boolean;waterNearby?:boolean;badWeatherBackup?:boolean;hotWeatherGood?:boolean;vegetarianFriendly?:boolean;tags:string[];links?:LinkSet;notes?:string[];todo?:boolean};
+export type StayPeriod={dates:string;name:string;notes:string[]};
+export type Contact={name:string;role?:string;phone?:string;mobile?:string;email?:string;website?:string;address:string[];sourceNote?:string};
+export type RouteStop={id:string;date:string;title:string;from:string;to:string;overnight?:Contact;notes:string[];todos:string[]};
+export type ChecklistGroup={id:string;title:string;items:string[]};
+export type WeatherNow={temperature:number;code:number;windSpeed:number;precipitationProbability:number;tempMin:number;tempMax:number};
+export type ArchiveEntry={name:string;summary:string;whyArchived:string};
