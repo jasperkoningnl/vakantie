@@ -1,78 +1,36 @@
-# Zomervakantie 2026 vakantiehub
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Een private, mobiele React/Vite reisgenoot voor de familievakantie naar **Les Escaliers de La Combe** in juni 2026. De app bundelt vandaagadvies, weer, verblijf, route, kaart, praktische plekken, thuisfrontinformatie, medische noodsamenvatting en checklists.
+## Getting Started
 
-## Starten
+First, run the development server:
 
 ```bash
-npm install
 npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Voor een productiebuild:
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-```bash
-npm run build
-```
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## Inhoud aanpassen
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-Alle reisinhoud staat als getypte data in `src/data`:
+## Learn More
 
-- `trip.ts` — algemene reisgegevens, hoofdverblijf en verblijfssplit.
-- `route.ts` — heenreis, terugreis, overnachtingen en TODO-velden.
-- `places.ts` — kaartplekken, uitjes, restaurants, praktische en medische TODO-plekken.
-- `medical.ts` — casual PIN, medische samenvatting en Franse brief.
-- `checklists.ts` — checklistgroepen en standaarditems.
-- `archive.ts` — oude vakantievergelijking als onopvallend archief.
+To learn more about Next.js, take a look at the following resources:
 
-Pagina's en componenten lezen deze data in; vermijd hardcoded reisinhoud in page components.
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-## Afbeeldingen toevoegen
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-Plaats lokale beelden in `public`:
+## Deploy on Vercel
 
-- Auto: `public/images/car-honda-crv.jpg` → gebruikt als `/images/car-honda-crv.jpg`.
-- Kaak-röntgenfoto: `public/medical/kaak-rontgen.jpg` → gebruikt als `/medical/kaak-rontgen.jpg`.
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Als de bestanden ontbreken, blijft de app bruikbaar en toont/verbergt hij de afbeelding netjes.
-
-## Medische PIN instellen
-
-De medische pagina gebruikt alleen een casual PIN-gate om toevallig meekijken te beperken. Dit is **geen echte beveiliging** en vervangt geen login of encryptie.
-
-Wijzig de PIN in:
-
-```ts
-// src/data/medical.ts
-export const medicalPin = '2026';
-```
-
-## Weer
-
-De Vandaag-pagina haalt weer op via Open-Meteo voor Les Escaliers:
-
-- latitude `44.521`
-- longitude `1.150`
-- timezone `Europe/Paris`
-
-De advieslogica staat in `src/utils/weather.ts`.
-
-## Checklists
-
-Checkliststatus wordt alleen lokaal opgeslagen in de browser via LocalStorage. Er is geen database, account of synchronisatie.
-
-## Deployen
-
-Elke statische host voor Vite werkt, bijvoorbeeld Netlify, Vercel, GitHub Pages of een eigen webserver:
-
-1. Run `npm run build`.
-2. Upload de map `dist`.
-3. Controleer of de host SPA fallback naar `index.html` ondersteunt voor React Router routes.
-4. Voeg de privébeelden toe vóór het deployen als ze mee moeten.
-
-## Privacy
-
-- Er staan geen privételefoonnummers van Jasper/Hilda in de broncode.
-- Publieke accommodatie- en bedrijfscontactgegevens zijn opgenomen.
-- Medische informatie staat alleen achter de casual PIN en niet op de homepage, behalve via de noodknop naar de medische pagina.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

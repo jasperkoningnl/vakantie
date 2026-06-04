@@ -1,2 +1,0 @@
-import{archiveEntries}from'../data/archive';
-export default function ArchivePage(){return <><section className="card"><h2 className="text-2xl font-bold">Archief</h2><p className="mt-2 text-stone-700">Niet prominent: oude vakantievergelijking alleen bewaard als naslag.</p></section>{archiveEntries.map(e=><article className="card" key={e.name}><h3 className="font-bold">{e.name}</h3><p>{e.summary}</p><p className="mt-2 text-sm text-stone-500">{e.whyArchived}</p></article>)}</>}
