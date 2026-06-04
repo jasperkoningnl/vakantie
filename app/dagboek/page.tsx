@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { DiaryEntry, PhotoMeta } from '@/lib/types'
 
-const MOODS = ['😎', '🌧️', '😴', '🎉', '🤩']
+const MOODS = [
+  { emoji: '😴', label: 'Moe' },
+  { emoji: '🙂', label: 'Goed' },
+  { emoji: '😄', label: 'Geweldig' },
+  { emoji: '🥰', label: 'Zalig' },
+  { emoji: '🤩', label: 'Episch' },
+]
 
 const VACATION_DAYS: string[] = Array.from({ length: 15 }, (_, i) => {
   const d = new Date('2025-06-13')
@@ -96,35 +102,47 @@ export default function DagboekPage() {
   }
 
   return (
-    <div className="px-4 pt-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-on-surface">Dagboek</h1>
+    <div className="px-4 pt-5">
+      <div className="flex items-center justify-between mb-5">
+        <h1
+          className="text-3xl font-medium"
+          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+        >
+          Dagboek
+        </h1>
       </div>
 
-      {/* Google Photos connected success */}
+      {/* Google Photos connected */}
       {session && (
-        <div className="rounded-2xl bg-green-50 border border-green-200 p-3 mb-4 flex items-center gap-3">
-          <span className="material-symbols-outlined text-green-600" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+        <div
+          className="rounded-2xl p-3 mb-4 flex items-center gap-3"
+          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
+        >
+          <span className="material-symbols-outlined" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
           <div>
-            <p className="text-sm font-semibold text-green-800">Google Photos gekoppeld</p>
-            <p className="text-xs text-green-700">Klap een dag open om de foto's van die dag te zien.</p>
+            <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Google Photos gekoppeld</p>
+            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om de foto&apos;s van die dag te zien.</p>
           </div>
         </div>
       )}
 
       {/* Google Photos onboarding */}
       {!session && (
-        <div className="rounded-2xl bg-tertiary/10 border border-tertiary/20 p-4 mb-5">
+        <div
+          className="rounded-2xl p-4 mb-5"
+          style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.25)' }}
+        >
           <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-tertiary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+            <span className="material-symbols-outlined text-3xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>photo_library</span>
             <div className="flex-1">
-              <p className="font-bold text-on-surface">Koppel Google Photos</p>
+              <p className="font-semibold text-on-surface">Koppel Google Photos</p>
               <p className="text-sm text-on-surface-variant mt-1">
-                Koppel je Google account om foto's van de dag automatisch te zien bij elke dagboekkaart.
+                Koppel je Google account om foto&apos;s van de dag automatisch te zien bij elke dagboekkaart.
               </p>
               <button
                 onClick={() => signIn('google', { callbackUrl: '/dagboek' })}
-                className="mt-3 rounded-full bg-tertiary text-white text-sm font-bold px-4 py-2 flex items-center gap-2"
+                className="mt-3 rounded-full text-white text-sm font-semibold px-4 py-2 flex items-center gap-2"
+                style={{ background: 'oklch(65% 0.10 218)' }}
               >
                 <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>login</span>
                 Inloggen met Google
@@ -141,36 +159,45 @@ export default function DagboekPage() {
           const dayPhotos = photos[date] || []
           const dateObj = new Date(date + 'T12:00:00')
           const hasContent = entry.actual_text || entry.mood_emoji || entry.story_text
+          const weekday = dateObj.toLocaleDateString('fr-FR', { weekday: 'long' })
+          const dayNum = dateObj.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })
 
           return (
-            <div key={date} className="rounded-2xl bg-surface border border-outline-variant overflow-hidden shadow-blue">
+            <div
+              key={date}
+              className="rounded-2xl overflow-hidden shadow-blue"
+              style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+            >
               <button
                 onClick={() => handleExpand(date)}
                 className="w-full flex items-center justify-between p-4"
               >
                 <div className="text-left">
-                  <p className="font-bold text-on-surface">
-                    {dateObj.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#A8937A' }}>
+                    {weekday}
                   </p>
+                  <p className="font-semibold text-on-surface">{dayNum}</p>
                   <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-2">
                     {entry.mood_emoji && <span>{entry.mood_emoji}</span>}
                     {hasContent ? 'Ingevuld' : 'Nog niet ingevuld'}
                   </p>
                 </div>
-                <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                <span
+                  className={`material-symbols-outlined text-on-surface-variant transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                >
                   expand_more
                 </span>
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4 border-t border-outline-variant">
+                <div className="px-4 pb-4" style={{ borderTop: '1px solid #E4D9C8' }}>
                   {/* Photo strip */}
                   {session && (
                     <div className="mt-3 mb-3">
                       {loadingPhotos === date ? (
                         <div className="flex items-center gap-2 text-xs text-on-surface-variant py-1">
                           <span className="material-symbols-outlined text-base animate-spin">refresh</span>
-                          Foto's laden…
+                          Foto&apos;s laden…
                         </div>
                       ) : dayPhotos.length > 0 ? (
                         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -184,15 +211,20 @@ export default function DagboekPage() {
                           ))}
                         </div>
                       ) : photos[date] !== undefined ? (
-                        <p className="text-xs text-on-surface-variant italic">Geen foto's op deze dag gevonden in Google Photos.</p>
+                        <p className="text-xs text-on-surface-variant italic">Geen foto&apos;s op deze dag gevonden in Google Photos.</p>
                       ) : null}
                     </div>
                   )}
 
                   {/* Plan text */}
                   <div className="mb-3">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">Plan was:</label>
-                    <p className="text-sm text-on-surface-variant mt-1 italic">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full" style={{ background: 'oklch(65% 0.10 218)' }} />
+                      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                        Gepland
+                      </label>
+                    </div>
+                    <p className="text-sm text-on-surface-variant leading-relaxed">
                       {entry.plan_text
                         ? (typeof entry.plan_text === 'string' && entry.plan_text.startsWith('{')
                           ? JSON.parse(entry.plan_text).stops?.map((s: { name: string }) => s.name).join(' → ')
@@ -203,37 +235,92 @@ export default function DagboekPage() {
 
                   {/* Actual text */}
                   <div className="mb-3">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">We hebben eigenlijk:</label>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full" style={{ background: 'oklch(57% 0.14 40)' }} />
+                      <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                        Wat echt gebeurde
+                      </label>
+                    </div>
                     <textarea
                       value={entry.actual_text || ''}
                       onChange={e => setEntries(prev => ({ ...prev, [date]: { ...entry, actual_text: e.target.value } }))}
                       onBlur={() => saveEntry(date, { actual_text: entry.actual_text })}
                       placeholder="Schrijf wat jullie echt hebben gedaan…"
                       rows={3}
-                      className="w-full mt-1 rounded-xl border border-outline-variant bg-white p-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 resize-none focus:outline-none focus:border-primary"
+                      className="w-full mt-1 rounded-xl p-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 resize-none focus:outline-none"
+                      style={{
+                        background: 'white',
+                        border: '1px solid #E4D9C8',
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                      onFocus={e => (e.target.style.borderColor = 'oklch(57% 0.14 40)')}
                     />
                   </div>
 
                   {/* Mood */}
-                  <div className="mb-3">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">Stemming:</label>
-                    <div className="flex gap-3 mt-2">
-                      {MOODS.map(emoji => (
+                  <div className="mb-4">
+                    <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                      Stemming van de dag
+                    </label>
+                    <div className="flex gap-2 mt-2">
+                      {MOODS.map(m => (
                         <button
-                          key={emoji}
-                          onClick={() => saveEntry(date, { mood_emoji: emoji })}
-                          className={`text-2xl transition-all ${entry.mood_emoji === emoji ? 'ring-2 ring-primary rounded-full scale-110' : 'opacity-60'}`}
+                          key={m.emoji}
+                          onClick={() => saveEntry(date, { mood_emoji: m.emoji })}
+                          className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2.5 transition-all"
+                          style={
+                            entry.mood_emoji === m.emoji
+                              ? {
+                                  background: 'oklch(92% 0.07 83)',
+                                  border: '2px solid oklch(79% 0.16 83)',
+                                  boxShadow: '0 2px 8px oklch(79% 0.16 83 / 0.3)',
+                                }
+                              : {
+                                  background: '#FAF7F0',
+                                  border: '2px solid transparent',
+                                  boxShadow: '0 1px 3px rgba(44,35,22,0.06), 0 0 0 1px rgba(44,35,22,0.05)',
+                                }
+                          }
                         >
-                          {emoji}
+                          <span className="text-xl">{m.emoji}</span>
+                          <span
+                            className="text-[9px] font-semibold"
+                            style={{ color: entry.mood_emoji === m.emoji ? '#6B5A3E' : '#A8937A' }}
+                          >
+                            {m.label}
+                          </span>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Story */}
+                  {/* AI story */}
                   {entry.story_text && (
-                    <div className="rounded-xl bg-secondary/20 border border-secondary/40 p-3 mb-3">
-                      <p className="text-sm text-on-surface leading-relaxed">{entry.story_text}</p>
+                    <div
+                      className="rounded-2xl p-4 mb-3 relative overflow-hidden"
+                      style={{
+                        background: 'linear-gradient(145deg, oklch(94% 0.04 75), oklch(96% 0.025 60))',
+                        border: '1px solid #E4D9C8',
+                      }}
+                    >
+                      <div
+                        className="absolute top-2 right-4 text-6xl leading-none pointer-events-none select-none"
+                        style={{ fontFamily: 'var(--font-journal)', color: 'oklch(57% 0.14 40)', opacity: 0.12 }}
+                      >
+                        "
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-xs" style={{ color: 'oklch(79% 0.16 83)' }}>✦</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                          Dagboekverhaal
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+                      >
+                        {entry.story_text}
+                      </p>
                     </div>
                   )}
 
@@ -241,7 +328,8 @@ export default function DagboekPage() {
                     <button
                       onClick={() => generateStory(date)}
                       disabled={generating === date}
-                      className="flex-1 rounded-full bg-primary text-white text-sm font-bold py-2 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 rounded-2xl text-white text-sm font-semibold py-2.5 disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ background: 'oklch(57% 0.14 40)' }}
                     >
                       {generating === date ? (
                         <>
