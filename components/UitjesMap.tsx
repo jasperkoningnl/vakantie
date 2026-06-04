@@ -1,5 +1,7 @@
 'use client'
+import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
+import type { Map as LeafletMap, Marker } from 'leaflet'
 import { Uitje } from '@/lib/uitjes'
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -18,15 +20,20 @@ interface Props {
 }
 
 export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBasket }: Props) {
-  const mapRef = useRef<HTMLDivElement>(null)
-  const mapInstanceRef = useRef<unknown>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<LeafletMap | null>(null)
+  const markersRef = useRef<Record<string, Marker>>({})
 
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return
+    if (!containerRef.current) return
+
+    let map: LeafletMap
 
     import('leaflet').then(L => {
-      const map = L.map(mapRef.current!, { zoomControl: true }).setView([44.5, 1.2], 10)
-      mapInstanceRef.current = map
+      if (!containerRef.current || mapRef.current) return
+
+      map = L.map(containerRef.current, { zoomControl: true }).setView([44.5, 1.2], 10)
+      mapRef.current = map
 
       L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenTopoMap contributors',
@@ -37,65 +44,57 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
         const color = CATEGORY_COLORS[u.type] || '#FF6B6B'
         const icon = L.divIcon({
           className: '',
-          html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;cursor:pointer;"></div>`,
+          html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;"></div>`,
           iconSize: [32, 32],
           iconAnchor: [16, 16],
         })
-
         const marker = L.marker(u.coords, { icon }).addTo(map)
         marker.on('click', () => onSelect(u.id))
-
-        if (u.id === selected) {
-          const popup = L.popup({ closeButton: false })
-            .setLatLng(u.coords)
-            .setContent(`
-              <div style="font-family:sans-serif;min-width:180px;">
-                <p style="font-weight:700;margin:0 0 4px;">${u.name}</p>
-                <p style="font-size:12px;color:#64748B;margin:0 0 8px;">${u.drive} · ${u.desc}</p>
-                <div style="display:flex;gap:6px;">
-                  <a href="${u.gmaps}" target="_blank" style="font-size:11px;color:#4D96FF;font-weight:600;">Maps</a>
-                  ${basketIds.includes(u.id) ? `<span style="font-size:11px;color:#FF6B6B;font-weight:600;">✓ In plan</span>` : `<button onclick="document.dispatchEvent(new CustomEvent('basket-add',{detail:'${u.id}'}));this.textContent='✓ Toegevoegd';" style="font-size:11px;color:#FF6B6B;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">+ Voeg toe</button>`}
-                </div>
-              </div>
-            `)
-          popup.openOn(map)
-        }
+        markersRef.current[u.id] = marker
       })
-
-      document.addEventListener('basket-add', ((e: CustomEvent) => {
-        onBasket(e.detail)
-      }) as EventListener)
-
-      return () => {
-        document.removeEventListener('basket-add', (() => {}) as EventListener)
-        map.remove()
-        mapInstanceRef.current = null
-      }
     })
+
+    const handleBasketAdd = (e: Event) => {
+      onBasket((e as CustomEvent).detail)
+    }
+    document.addEventListener('basket-add', handleBasketAdd)
+
+    return () => {
+      document.removeEventListener('basket-add', handleBasketAdd)
+      mapRef.current?.remove()
+      mapRef.current = null
+      markersRef.current = {}
+    }
   }, [])
 
   useEffect(() => {
-    if (!mapInstanceRef.current) return
+    if (!mapRef.current || !selected) return
+    const uitje = uitjes.find(u => u.id === selected)
+    if (!uitje) return
+
     import('leaflet').then(L => {
-      const map = mapInstanceRef.current as L.Map
-      if (selected) {
-        const uitje = uitjes.find(u => u.id === selected)
-        if (uitje) {
-          map.setView(uitje.coords, 12)
-          const popup = L.popup({ closeButton: true })
-            .setLatLng(uitje.coords)
-            .setContent(`
-              <div style="font-family:sans-serif;min-width:180px;">
-                <p style="font-weight:700;margin:0 0 4px;">${uitje.name}</p>
-                <p style="font-size:12px;color:#64748B;margin:0 0 8px;">${uitje.drive} · ${uitje.desc}</p>
-                <a href="${uitje.gmaps}" target="_blank" style="font-size:11px;color:#4D96FF;font-weight:600;">Maps openen →</a>
-              </div>
-            `)
-          popup.openOn(map)
-        }
-      }
+      if (!mapRef.current) return
+      mapRef.current.setView(uitje.coords, 13)
+      const inBasket = basketIds.includes(uitje.id)
+      const addBtn = inBasket
+        ? `<span style="font-size:11px;color:#FF6B6B;font-weight:600;">✓ In plan</span>`
+        : `<button onclick="document.dispatchEvent(new CustomEvent('basket-add',{detail:'${uitje.id}'}));this.textContent='✓ Toegevoegd';" style="font-size:11px;color:#FF6B6B;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">+ Voeg toe</button>`
+
+      L.popup({ closeButton: true })
+        .setLatLng(uitje.coords)
+        .setContent(`
+          <div style="font-family:sans-serif;min-width:180px;">
+            <p style="font-weight:700;margin:0 0 4px;">${uitje.name}</p>
+            <p style="font-size:12px;color:#64748B;margin:0 0 8px;">${uitje.drive} · ${uitje.desc}</p>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <a href="${uitje.gmaps}" target="_blank" style="font-size:11px;color:#4D96FF;font-weight:600;">Maps</a>
+              ${addBtn}
+            </div>
+          </div>
+        `)
+        .openOn(mapRef.current)
     })
   }, [selected])
 
-  return <div ref={mapRef} className="w-full h-full rounded-2xl overflow-hidden" />
+  return <div ref={containerRef} className="w-full h-full" />
 }
