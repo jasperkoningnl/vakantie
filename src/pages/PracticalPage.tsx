@@ -1,0 +1,3 @@
+import MapView from '../components/MapView';import{places}from'../data/places';import type{PlaceCategory}from'../types';
+const cats:PlaceCategory[]=['restaurant','patisserie','supermarket','fuel','pharmacy','hospital','dentist','practical'];
+export default function PracticalPage(){const ps=places.filter(p=>cats.includes(p.category));return <><section className="card"><h2 className="text-2xl font-bold">Praktisch</h2><p className="mt-2 text-stone-700">Eten, boodschappen, brandstof en medische praktische plekken. TODO-kaarten zijn zichtbaar zodat ze later makkelijk ingevuld worden.</p></section><MapView places={ps} categories={cats}/></>}
