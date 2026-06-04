@@ -26,6 +26,7 @@ const caveat = Caveat({
 export const metadata: Metadata = {
   title: 'Notre Voyage',
   description: 'Familie vakantie in de Lot, Zuid-Frankrijk',
+  manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {
@@ -43,6 +44,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
         />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#7C5F42" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body className="bg-background text-on-surface min-h-screen">
         <Providers>
