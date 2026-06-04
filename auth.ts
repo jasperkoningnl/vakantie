@@ -8,24 +8,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope:
-            'openid email profile https://www.googleapis.com/auth/photoslibrary.readonly',
-          access_type: 'offline',
-          prompt: 'consent',
+          scope: 'openid email profile https://www.googleapis.com/auth/photoslibrary.readonly',
         },
       },
     }),
   ],
   callbacks: {
     async jwt({ token, account }) {
-      if (account?.access_token) {
+      if (account) {
         token.accessToken = account.access_token
+        token.refreshToken = account.refresh_token
       }
       return token
     },
     async session({ session, token }) {
-      session.accessToken = token.accessToken as string | undefined
+      session.accessToken = token.accessToken as string
       return session
     },
   },
+  secret: process.env.NEXTAUTH_SECRET,
 })

@@ -1,15 +1,18 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist } from 'next/font/google'
+import { Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import { BottomNav } from '@/components/BottomNav'
 import { Providers } from '@/components/Providers'
 
-const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-jakarta',
+})
 
 export const metadata: Metadata = {
   title: 'Notre Voyage',
   description: 'Familie vakantie in de Lot, Zuid-Frankrijk',
-  manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {
@@ -21,10 +24,16 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="nl" className={`${geist.variable} antialiased`}>
-      <body className="bg-amber-50 min-h-screen">
+    <html lang="nl" className={`${jakarta.variable} antialiased`}>
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
+        />
+      </head>
+      <body className="bg-background text-on-surface min-h-screen">
         <Providers>
-          <main className="max-w-md mx-auto min-h-screen pb-24 px-4">
+          <main className="max-w-md mx-auto min-h-screen pb-24">
             {children}
           </main>
           <BottomNav />
