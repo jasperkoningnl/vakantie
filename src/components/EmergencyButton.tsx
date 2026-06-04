@@ -1,2 +1,2 @@
-import{HeartPulse}from'lucide-react';import{Link}from'react-router-dom';
-export default function EmergencyButton(){return <Link to="/medisch" className="no-print inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-2 text-sm font-bold text-white shadow"><HeartPulse size={18}/>Medisch</Link>}
+import{Siren}from'lucide-react';import{Link}from'react-router-dom';
+export default function EmergencyButton(){return <Link to="/medisch" className="no-print inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-3 text-sm font-black text-white shadow-lg shadow-red-900/10 transition hover:bg-red-800"><Siren size={18}/>Emergency</Link>}
