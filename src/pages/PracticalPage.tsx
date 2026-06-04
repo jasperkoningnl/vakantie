@@ -1,3 +1,0 @@
-import MapView from '../components/MapView';import{places}from'../data/places';import type{PlaceCategory}from'../types';
-const cats:PlaceCategory[]=['restaurant','patisserie','supermarket','fuel','pharmacy','hospital','dentist'];
-export default function PracticalPage(){const ps=places.filter(p=>cats.includes(p.category));return <><section className="card"><h2 className="text-2xl font-bold">Plekken</h2><p className="mt-2 text-stone-700">Alle plekken in de gedeelde dataset. De kaart is een hulpmiddel; kies details of voeg stops toe vanuit een dagplan.</p></section><MapView places={ps} categories={cats}/></>}
