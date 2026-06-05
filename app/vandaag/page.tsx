@@ -17,7 +17,18 @@ const CATEGORIES = [
   { label: 'Verras ons',      icon: 'auto_awesome',  value: 'surprise', color: 'oklch(68% 0.11 10)',  bg: 'oklch(93% 0.05 10)',  uitjeFilter: (u: Uitje) => !u.marktDag },
 ]
 
-type Phase = 'build' | 'select' | 'confirm' | 'planning' | 'plan'
+const MOODS = [
+  { emoji: '😴', label: 'Moe' },
+  { emoji: '🙂', label: 'Goed' },
+  { emoji: '😄', label: 'Geweldig' },
+  { emoji: '🥰', label: 'Zalig' },
+  { emoji: '🤩', label: 'Episch' },
+]
+
+type Phase = 'build' | 'select' | 'confirm' | 'planning' | 'edit' | 'plan'
+
+interface UserLocation { lat: number; lon: number }
+interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
 function getTodayDateStr() {
   return new Date().toISOString().split('T')[0]
@@ -94,11 +105,23 @@ export default function VandaagPage() {
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [activeCatTab, setActiveCatTab] = useState<string>('')
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null)
+  const [editPlan, setEditPlan] = useState<DayPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showTomorrowWizard, setShowTomorrowWizard] = useState(false)
   const [tomorrowBasketIds, setTomorrowBasketIds] = useState<string[]>([])
   const [tomorrowPlan, setTomorrowPlan] = useState<DayPlan | null>(null)
   const [tomorrowPlanning, setTomorrowPlanning] = useState(false)
+
+  // Location
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
+
+  // Sluit dag af
+  const [showSluitAf, setShowSluitAf] = useState(false)
+  const [followedPlan, setFollowedPlan] = useState<boolean | null>(null)
+  const [sluitActualText, setSluitActualText] = useState('')
+  const [sluitMoodEmoji, setSluitMoodEmoji] = useState<string | null>(null)
+  const [sluitSaving, setSluitSaving] = useState(false)
+  const [sluitDone, setSluitDone] = useState(false)
 
   const today = getTodayDateStr()
   const tomorrow = getTomorrowDateStr()
@@ -108,7 +131,6 @@ export default function VandaagPage() {
   const vandaagMarkten = getTodayMarkten()
   const after17 = isAfter17Paris()
 
-  // Before June 13, 2025: show vertreklijst banner
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
@@ -120,7 +142,7 @@ export default function VandaagPage() {
 
     fetch('/api/diary')
       .then(r => r.json())
-      .then((data: Array<{ date: string; plan_text?: string }>) => {
+      .then((data: Array<{ date: string; plan_text?: string; actual_text?: string; mood_emoji?: string }>) => {
         const todayEntry = data.find(e => e.date === today)
         if (todayEntry?.plan_text) {
           try {
@@ -129,6 +151,11 @@ export default function VandaagPage() {
             if (plan?.stops) { setDayPlan(plan); setPhase('plan') }
           } catch { /* geen plan */ }
         }
+        // Restore "Sluit dag af" state if already filled in
+        if (todayEntry?.actual_text || todayEntry?.mood_emoji) {
+          setSluitDone(true)
+        }
+
         const tomorrowEntry = data.find(e => e.date === tomorrow)
         if (tomorrowEntry?.plan_text) {
           try {
@@ -138,6 +165,15 @@ export default function VandaagPage() {
           } catch { /* geen plan */ }
         }
       }).catch(() => {})
+
+    // Request geolocation
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        pos => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => { /* permission denied or error */ },
+        { enableHighAccuracy: false, timeout: 10000 }
+      )
+    }
   }, [])
 
   const weatherDesc = weather
@@ -188,13 +224,19 @@ export default function VandaagPage() {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
 
-      await getSupabase().from('diary_entries').upsert(
-        { date: forDate, plan_text: JSON.stringify(data) },
-        { onConflict: 'date' }
-      )
-
-      if (forDate === today) { setDayPlan(data); setPhase('plan') }
-      else { setTomorrowPlan(data); setTomorrowPlanning(false) }
+      if (forDate === today) {
+        // Go to edit phase — don't save yet, let user confirm
+        setEditPlan(data)
+        setPhase('edit')
+      } else {
+        // For tomorrow: save directly
+        await getSupabase().from('diary_entries').upsert(
+          { date: forDate, plan_text: JSON.stringify(data) },
+          { onConflict: 'date' }
+        )
+        setTomorrowPlan(data)
+        setTomorrowPlanning(false)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Er ging iets mis. Probeer opnieuw.')
       if (forDate === today) setPhase('confirm')
@@ -202,12 +244,47 @@ export default function VandaagPage() {
     }
   }
 
+  const handleConfirmPlan = async (plan: DayPlan) => {
+    try {
+      await getSupabase().from('diary_entries').upsert(
+        { date: today, plan_text: JSON.stringify(plan) },
+        { onConflict: 'date' }
+      )
+      setDayPlan(plan)
+      setEditPlan(null)
+      setPhase('plan')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Opslaan mislukt.')
+    }
+  }
+
+  const handleSluitAf = async () => {
+    setSluitSaving(true)
+    const actualText = followedPlan === false ? sluitActualText : 'We hebben het plan gevolgd.'
+    try {
+      await fetch('/api/diary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: today,
+          actual_text: actualText,
+          mood_emoji: sluitMoodEmoji,
+        }),
+      })
+      setSluitDone(true)
+      setShowSluitAf(false)
+    } catch { /* ignore */ }
+    setSluitSaving(false)
+  }
+
   const reset = () => {
     setPhase('build')
     setSelectedCats([])
     setBasketIds([])
     setDayPlan(null)
+    setEditPlan(null)
     setError(null)
+    setShowSluitAf(false)
     localStorage.removeItem('dagplan_basket')
   }
 
@@ -267,17 +344,15 @@ export default function VandaagPage() {
 
       {/* Reisdag modus */}
       {todayEntry?.type === 'reisdag' && (
-        <ReisDagView entry={todayEntry} />
+        <ReisDagView entry={todayEntry} userLocation={userLocation} />
       )}
 
       {/* Verblijf Chartres */}
       {todayEntry?.type === 'verblijf' && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.3)' }}>
-          {todayEntry?.type === 'verblijf' && (
-            <p className="text-sm font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
-              📍 {todayEntry.verblijf} — {todayEntry.label}
-            </p>
-          )}
+          <p className="text-sm font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
+            📍 {todayEntry.verblijf} — {todayEntry.label}
+          </p>
         </div>
       )}
 
@@ -336,13 +411,41 @@ export default function VandaagPage() {
             </div>
           )}
 
-          {phase === 'plan' && dayPlan && (
-            <DagplanView
-              dayPlan={dayPlan}
+          {phase === 'edit' && editPlan && (
+            <EditPlanView
+              plan={editPlan}
+              onChange={setEditPlan}
               basketIds={basketIds}
-              onAanpassen={() => setPhase('select')}
+              onConfirm={() => handleConfirmPlan(editPlan)}
+              onAddStop={() => setPhase('select')}
               onReset={reset}
             />
+          )}
+
+          {phase === 'plan' && dayPlan && (
+            <>
+              <DagplanView
+                dayPlan={dayPlan}
+                basketIds={basketIds}
+                onAanpassen={() => { setEditPlan(dayPlan); setPhase('edit') }}
+                onReset={reset}
+                onSluitAf={() => setShowSluitAf(true)}
+                sluitDone={sluitDone}
+              />
+              {showSluitAf && (
+                <SluitDagAfModal
+                  followedPlan={followedPlan}
+                  setFollowedPlan={setFollowedPlan}
+                  actualText={sluitActualText}
+                  setActualText={setSluitActualText}
+                  moodEmoji={sluitMoodEmoji}
+                  setMoodEmoji={setSluitMoodEmoji}
+                  saving={sluitSaving}
+                  onSave={handleSluitAf}
+                  onClose={() => setShowSluitAf(false)}
+                />
+              )}
+            </>
           )}
         </>
       )}
@@ -399,7 +502,10 @@ function WeatherCard({ weather }: { weather: WeatherData | null }) {
   )
 }
 
-function ReisDagView({ entry }: { entry: Reisdag }) {
+function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: UserLocation | null }) {
+  const [tussenstop, setTussenstop] = useState<Tussenstop | null>(null)
+  const [tussenstopLoading, setTussenstopLoading] = useState(false)
+
   const accommodations: Record<string, { naam: string; adres: string; gmaps: string }> = {
     'Atelier des Sens 89': {
       naam: 'Atelier des Sens 89',
@@ -424,7 +530,6 @@ function ReisDagView({ entry }: { entry: Reisdag }) {
   }
   const overnachting = accommodations[entry.naar]
 
-  // Build Google Maps route URL for today's leg
   const routeCoords: Record<string, string> = {
     'Amersfoort': '52.155,5.387',
     'Atelier des Sens 89': '47.861,3.562',
@@ -438,6 +543,30 @@ function ReisDagView({ entry }: { entry: Reisdag }) {
     : ''
 
   const tussenstops = entry.route.replace('Via ', '').split(', ')
+
+  const zoekTussenstop = async () => {
+    if (!userLocation) return
+    setTussenstopLoading(true)
+    setTussenstop(null)
+    try {
+      const res = await fetch('/api/tussenstop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          van: entry.van,
+          naar: entry.naar,
+          route: entry.route,
+          lat: userLocation.lat,
+          lon: userLocation.lon,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setTussenstop(data)
+      }
+    } catch { /* ignore */ }
+    setTussenstopLoading(false)
+  }
 
   return (
     <div className="mb-5">
@@ -469,6 +598,79 @@ function ReisDagView({ entry }: { entry: Reisdag }) {
           </a>
         )}
       </div>
+
+      {/* Huidige locatie */}
+      {userLocation && (
+        <div
+          className="rounded-2xl p-3 mb-4 flex items-center gap-3"
+          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
+        >
+          <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>my_location</span>
+          <div className="flex-1">
+            <p className="text-xs font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Huidige locatie</p>
+            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>
+              {userLocation.lat.toFixed(4)}°N, {userLocation.lon.toFixed(4)}°E
+            </p>
+          </div>
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${userLocation.lat},${userLocation.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold"
+            style={{ color: 'oklch(58% 0.10 148)' }}
+          >
+            Maps →
+          </a>
+        </div>
+      )}
+
+      {/* Tussenstop zoeken */}
+      {userLocation && (
+        <div className="mb-5">
+          <button
+            onClick={zoekTussenstop}
+            disabled={tussenstopLoading}
+            className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-3"
+            style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}
+          >
+            {tussenstopLoading ? (
+              <>
+                <span className="material-symbols-outlined text-base animate-spin">refresh</span>
+                Tussenstop zoeken…
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>place</span>
+                Tussenstop zoeken
+              </>
+            )}
+          </button>
+          {tussenstop && (
+            <div
+              className="rounded-2xl p-4 shadow-blue"
+              style={{ background: '#FAF7F0', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>
+                  Suggestie
+                </span>
+              </div>
+              <p className="font-semibold text-on-surface">{tussenstop.naam}</p>
+              <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">{tussenstop.beschrijving}</p>
+              <a
+                href={tussenstop.gmaps}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold"
+                style={{ color: 'oklch(65% 0.10 218)' }}
+              >
+                <span className="material-symbols-outlined text-sm">map</span>
+                Navigeer →
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tussenstops */}
       <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
@@ -634,7 +836,6 @@ function SelectPhase({
 
   return (
     <div>
-      {/* Back + title */}
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-sm font-semibold mb-4"
@@ -674,7 +875,7 @@ function SelectPhase({
                 {hasSelection && (
                   <span
                     className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
-                    style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: isActive ? 'white' : 'white' }}
+                    style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: 'white' }}
                   >
                     ✓
                   </span>
@@ -685,7 +886,7 @@ function SelectPhase({
         </div>
       )}
 
-      {/* Uitje kaarten — verticaal gestapeld */}
+      {/* Uitje kaarten */}
       <div className="flex flex-col gap-4 mb-24">
         {catUitjes.map(u => {
           const inBasket = basketIds.includes(u.id)
@@ -699,30 +900,20 @@ function SelectPhase({
                 border: `2px solid ${inBasket ? activeCat.color : '#E4D9C8'}`,
               }}
             >
-              {/* Header */}
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <h3 className="text-xl font-bold text-on-surface leading-tight">{u.name}</h3>
                   <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                    <span
-                      className="text-[10px] font-semibold rounded-full px-2 py-0.5"
-                      style={{ background: '#F0E9DA', color: '#6B5A3E' }}
-                    >
+                    <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
                       🚗 {u.drive}
                     </span>
                     {u.vegetarian && (
-                      <span
-                        className="text-[10px] font-semibold rounded-full px-2 py-0.5"
-                        style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}
-                      >
+                      <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>
                         🌿 Vegetarisch
                       </span>
                     )}
                     {isMarktVandaag && (
-                      <span
-                        className="text-[10px] font-bold rounded-full px-2 py-0.5"
-                        style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}
-                      >
+                      <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
                         🛒 Markt vandaag!
                       </span>
                     )}
@@ -730,10 +921,8 @@ function SelectPhase({
                 </div>
               </div>
 
-              {/* Beschrijving */}
               <p className="text-sm text-on-surface-variant leading-relaxed mb-4">{u.desc}</p>
 
-              {/* Links */}
               {(u.wiki || u.site || u.gmaps) && (
                 <div className="flex gap-3 mb-4 flex-wrap">
                   {u.wiki && (
@@ -752,7 +941,6 @@ function SelectPhase({
                 </div>
               )}
 
-              {/* Selecteer button */}
               <button
                 onClick={() => onToggleBasket(u.id)}
                 className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
@@ -823,10 +1011,9 @@ function ConfirmPhase({
         Jouw dag
       </h2>
       <p className="text-xs text-on-surface-variant mb-5">
-        Dit zijn de gekozen stops. Bevestig of pas aan.
+        Dit zijn de gekozen stops. Bevestig om een dagplan te genereren.
       </p>
 
-      {/* Gekozen stops */}
       <div className="flex flex-col gap-3 mb-5">
         {selectedUitjes.map((u, i) => {
           const isMarktVandaag = isTodayMarkt(u)
@@ -859,7 +1046,6 @@ function ConfirmPhase({
         })}
       </div>
 
-      {/* Route preview */}
       <a
         href={mapsUrl}
         target="_blank"
@@ -871,14 +1057,135 @@ function ConfirmPhase({
         Bekijk route alvast op kaart →
       </a>
 
-      {/* Bevestigen */}
       <button
         onClick={onConfirm}
         className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3"
         style={{ background: 'oklch(57% 0.14 40)' }}
       >
+        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+        Maak dagplan
+      </button>
+
+      <button
+        onClick={onReset}
+        className="w-full rounded-2xl py-3 text-sm font-semibold"
+        style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
+      >
+        Opnieuw beginnen
+      </button>
+    </div>
+  )
+}
+
+function EditPlanView({
+  plan,
+  onChange,
+  basketIds,
+  onConfirm,
+  onAddStop,
+  onReset,
+}: {
+  plan: DayPlan
+  onChange: (p: DayPlan) => void
+  basketIds: string[]
+  onConfirm: () => void
+  onAddStop: () => void
+  onReset: () => void
+}) {
+  const moveStop = (i: number, dir: -1 | 1) => {
+    const stops = [...plan.stops]
+    const j = i + dir
+    if (j < 0 || j >= stops.length) return
+    ;[stops[i], stops[j]] = [stops[j], stops[i]]
+    onChange({ ...plan, stops })
+  }
+
+  const removeStop = (i: number) => {
+    const stops = plan.stops.filter((_, idx) => idx !== i)
+    onChange({ ...plan, stops })
+  }
+
+  return (
+    <div>
+      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
+        Pas het plan aan
+      </h2>
+      <p className="text-xs text-on-surface-variant mb-5">
+        Verwijder stops of pas de volgorde aan. Bevestig daarna het plan.
+      </p>
+
+      <div className="flex flex-col gap-3 mb-5">
+        {plan.stops.map((stop, i) => (
+          <div
+            key={i}
+            className="rounded-2xl p-4 shadow-blue flex gap-3"
+            style={{
+              background: stop.isTip ? 'oklch(95% 0.03 83)' : '#FAF7F0',
+              border: `1px solid ${stop.isTip ? '#E4D9C8' : 'oklch(57% 0.14 40 / 0.2)'}`,
+              opacity: stop.isTip ? 0.8 : 1,
+            }}
+          >
+            {/* Reorder arrows */}
+            <div className="flex flex-col gap-1 flex-shrink-0">
+              <button
+                onClick={() => moveStop(i, -1)}
+                disabled={i === 0}
+                className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+                style={{ background: '#F0E9DA' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>arrow_upward</span>
+              </button>
+              <button
+                onClick={() => moveStop(i, 1)}
+                disabled={i === plan.stops.length - 1}
+                className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
+                style={{ background: '#F0E9DA' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>arrow_downward</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
+                {stop.isTip && <span className="text-[10px]" style={{ color: '#A8937A' }}>Tip onderweg</span>}
+              </div>
+              <p className="font-semibold text-sm text-on-surface">{stop.name}</p>
+              <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-2">{stop.description}</p>
+            </div>
+
+            {/* Remove */}
+            <button
+              onClick={() => removeStop(i)}
+              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ background: '#FEF2F2', color: '#EF4444' }}
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Voeg stop toe */}
+      <button
+        onClick={onAddStop}
+        className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-4"
+        style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px dashed #E4D9C8' }}
+      >
+        <span className="material-symbols-outlined text-base">add</span>
+        Voeg stop toe
+      </button>
+
+      {/* Bevestig */}
+      <button
+        onClick={onConfirm}
+        disabled={plan.stops.length === 0}
+        className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+        style={{ background: 'oklch(57% 0.14 40)' }}
+      >
         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
-        Dit gaan we doen!
+        Bevestig als dagplan
       </button>
 
       <button
@@ -897,11 +1204,15 @@ function DagplanView({
   basketIds,
   onAanpassen,
   onReset,
+  onSluitAf,
+  sluitDone,
 }: {
   dayPlan: DayPlan
   basketIds: string[]
   onAanpassen: () => void
   onReset: () => void
+  onSluitAf: () => void
+  sluitDone: boolean
 }) {
   const now = new Date()
   const currentHour = now.getHours() + now.getMinutes() / 60
@@ -979,13 +1290,13 @@ function DagplanView({
       </div>
 
       {/* Actie-knoppen */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 mb-4">
         <button
           onClick={onAanpassen}
           className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold"
           style={{ borderColor: '#E4D9C8', color: 'oklch(57% 0.14 40)' }}
         >
-          Aanpassen
+          Pas plan aan
         </button>
         <button
           onClick={onReset}
@@ -993,6 +1304,143 @@ function DagplanView({
           style={{ borderColor: '#E4D9C8', color: '#A8937A' }}
         >
           Opnieuw beginnen
+        </button>
+      </div>
+
+      {/* Sluit dag af */}
+      {sluitDone ? (
+        <div
+          className="rounded-2xl p-4 flex items-center gap-3"
+          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
+        >
+          <span className="material-symbols-outlined" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Dag afgesloten — check het dagboek!</p>
+          <a href="/dagboek" className="ml-auto text-xs font-semibold" style={{ color: 'oklch(58% 0.10 148)' }}>Dagboek →</a>
+        </div>
+      ) : (
+        <button
+          onClick={onSluitAf}
+          className="w-full rounded-2xl py-4 font-bold text-base flex items-center justify-center gap-2"
+          style={{ background: '#2C2316', color: 'white' }}
+        >
+          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>nightlight</span>
+          Sluit dag af
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SluitDagAfModal({
+  followedPlan,
+  setFollowedPlan,
+  actualText,
+  setActualText,
+  moodEmoji,
+  setMoodEmoji,
+  saving,
+  onSave,
+  onClose,
+}: {
+  followedPlan: boolean | null
+  setFollowedPlan: (v: boolean) => void
+  actualText: string
+  setActualText: (v: string) => void
+  moodEmoji: string | null
+  setMoodEmoji: (v: string) => void
+  saving: boolean
+  onSave: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6" style={{ background: 'rgba(44,35,22,0.55)' }}>
+      <div
+        className="w-full max-w-md rounded-3xl p-6 shadow-2xl"
+        style={{ background: '#FAF7F0' }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
+            Sluit de dag af
+          </h3>
+          <button onClick={onClose} style={{ color: '#A8937A' }}>
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        {/* Gevolgd plan? */}
+        <p className="text-sm font-semibold text-on-surface mb-3">Hebben jullie het plan gevolgd?</p>
+        <div className="flex gap-3 mb-4">
+          {[{ val: true, label: 'Ja, grotendeels' }, { val: false, label: 'Nee, anders gegaan' }].map(opt => (
+            <button
+              key={String(opt.val)}
+              onClick={() => setFollowedPlan(opt.val)}
+              className="flex-1 rounded-2xl py-3 text-sm font-semibold transition-all"
+              style={
+                followedPlan === opt.val
+                  ? { background: 'oklch(57% 0.14 40)', color: 'white', border: '2px solid oklch(57% 0.14 40)' }
+                  : { background: '#FAF7F0', color: '#6B5A3E', border: '2px solid #E4D9C8' }
+              }
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Vrije tekst als nee */}
+        {followedPlan === false && (
+          <div className="mb-4">
+            <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: '#A8937A' }}>
+              Wat hebben jullie gedaan?
+            </label>
+            <textarea
+              value={actualText}
+              onChange={e => setActualText(e.target.value)}
+              placeholder="Schrijf kort wat er echt is gebeurd…"
+              rows={3}
+              className="w-full rounded-xl p-3 text-sm resize-none focus:outline-none"
+              style={{ background: 'white', border: '1px solid #E4D9C8', color: '#2C2316' }}
+            />
+          </div>
+        )}
+
+        {/* Mood */}
+        <p className="text-sm font-semibold text-on-surface mb-3">Hoe was de dag?</p>
+        <div className="flex gap-2 mb-5">
+          {MOODS.map(m => (
+            <button
+              key={m.emoji}
+              onClick={() => setMoodEmoji(m.emoji)}
+              className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2.5 transition-all"
+              style={
+                moodEmoji === m.emoji
+                  ? { background: 'oklch(92% 0.07 83)', border: '2px solid oklch(79% 0.16 83)', boxShadow: '0 2px 8px oklch(79% 0.16 83 / 0.3)' }
+                  : { background: '#F0E9DA', border: '2px solid transparent' }
+              }
+            >
+              <span className="text-xl">{m.emoji}</span>
+              <span className="text-[9px] font-semibold" style={{ color: moodEmoji === m.emoji ? '#6B5A3E' : '#A8937A' }}>{m.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Opslaan */}
+        <button
+          onClick={onSave}
+          disabled={saving || (followedPlan === null)}
+          className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
+          style={{ background: 'oklch(57% 0.14 40)' }}
+        >
+          {saving ? (
+            <>
+              <span className="material-symbols-outlined text-base animate-spin">refresh</span>
+              Opslaan…
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>book</span>
+              Opslaan in dagboek
+            </>
+          )}
         </button>
       </div>
     </div>
