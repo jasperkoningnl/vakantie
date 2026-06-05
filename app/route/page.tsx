@@ -186,36 +186,6 @@ export default function RoutePage() {
         </div>
       </section>
 
-      {/* Auto */}
-      <section
-        className="rounded-2xl p-4 mb-6 shadow-blue"
-        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-      >
-        <h2 className="font-semibold text-on-surface mb-3 flex items-center gap-2">
-          <span className="material-symbols-outlined text-on-surface-variant" style={{ fontVariationSettings: "'FILL' 1" }}>directions_car</span>
-          Auto
-        </h2>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <p className="text-xs text-on-surface-variant">Auto</p>
-            <p className="font-semibold">Honda CR-V</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Kleur</p>
-            <p className="font-semibold">Donkerblauw metallic</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Kenteken</p>
-            <p className="font-semibold font-mono">P-162-KB</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Verzekering</p>
-            <p className="font-semibold">Allianz all-risk</p>
-          </div>
-        </div>
-        <p className="text-xs text-on-surface-variant mt-2">Nul eigen risico · Honda Assistance Europese dekking</p>
-      </section>
-
       {/* We zijn er! */}
       <section className="mb-8">
         <div className="relative">

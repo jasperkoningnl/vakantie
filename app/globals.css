@@ -47,4 +47,37 @@ body {
   .no-print {
     display: none !important;
   }
+
+  /* Dagboek print — boek-vriendelijke opmaak */
+  body {
+    background: white;
+    font-size: 11pt;
+  }
+
+  .rounded-2xl, .rounded-xl {
+    border-radius: 0 !important;
+  }
+
+  /* Elke dagboek-kaart begint op een nieuwe pagina */
+  [data-print-page] {
+    page-break-before: always;
+    break-before: page;
+    padding: 2cm;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Foto-grid in print: 3 kolommen, klein */
+  [data-print-photos] {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin-bottom: 8mm;
+  }
+
+  [data-print-photos] img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+  }
 }

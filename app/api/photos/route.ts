@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       Authorization: `Bearer ${session.accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ filters, pageSize: 6 }),
+    body: JSON.stringify({ filters, pageSize: 50 }),
   })
 
   if (!res.ok) {
