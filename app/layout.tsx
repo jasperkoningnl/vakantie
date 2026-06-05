@@ -3,6 +3,8 @@ import { DM_Sans, Cormorant_Garamond, Caveat } from 'next/font/google'
 import './globals.css'
 import { BottomNav } from '@/components/BottomNav'
 import { Providers } from '@/components/Providers'
+import SwRegistration from '@/components/SwRegistration'
+import PwaInstallBanner from '@/components/PwaInstallBanner'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -50,7 +52,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body className="bg-background text-on-surface min-h-screen">
+        <SwRegistration />
         <Providers>
+          <PwaInstallBanner />
           <main className="max-w-md mx-auto min-h-screen pb-24">
             {children}
           </main>
