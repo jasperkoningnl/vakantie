@@ -2,7 +2,42 @@
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
 
-const RouteMap = dynamic(() => import('@/components/RouteMap'), { ssr: false })
+const LegMap = dynamic(() => import('@/components/LegMap'), { ssr: false })
+
+// Route-coördinaten per leg
+const HEEN_ROUTE: [number, number][] = [
+  [52.155, 5.387],
+  [51.22, 4.40],
+  [49.259, 4.031],
+  [48.856, 2.352],
+  [47.798, 3.567],
+  [47.077, 2.983],
+  [46.562, 2.008],
+  [45.148, 1.532],
+  [44.521, 1.150],
+]
+
+const TERUG_ROUTE: [number, number][] = [
+  [44.521, 1.150],
+  [45.833, 1.261],
+  [46.557, 1.980],
+  [47.906, 1.904],
+  [48.457, 1.490],
+  [51.22, 4.40],
+  [52.155, 5.387],
+]
+
+const HEEN_MARKERS = [
+  { coords: [52.155, 5.387] as [number, number], label: 'Amersfoort', color: '#1E293B' },
+  { coords: [47.861, 3.562] as [number, number], label: 'Atelier des Sens', color: '#4D96FF' },
+  { coords: [44.521, 1.150] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
+]
+
+const TERUG_MARKERS = [
+  { coords: [44.521, 1.150] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
+  { coords: [48.447, 1.489] as [number, number], label: 'Chartres', color: '#4D96FF' },
+  { coords: [52.155, 5.387] as [number, number], label: 'Amersfoort', color: '#1E293B' },
+]
 
 const TANK_STOPS = [
   {
@@ -10,13 +45,17 @@ const TANK_STOPS = [
     name: 'Aire de Nemours',
     highway: 'A6 (E15), afrit 16 bij Nemours',
     desc: 'Ruim parkeerterrein met Total station, brasserie en speelveldje buiten. Precies halverwege Parijs en Sens.',
+    lena: 'Speelveldje aanwezig buiten de brasserie.',
+    eetTip: 'Brasserie ter plaatse.',
     gmaps: 'https://www.google.com/maps/search/?api=1&query=Aire+de+Nemours+A6',
   },
   {
     leg: 'heen',
     name: 'Aire de Souillac',
     highway: 'A20, nabij Souillac (km 515)',
-    desc: 'Mooie rustplek aan de Dordogne vallei. Total station, McDonald\'s én voldoende ruimte voor Lena. Nog 40 min tot Les Escaliers.',
+    desc: "Mooie rustplek aan de Dordogne vallei. Total station, McDonald's én voldoende ruimte voor Lena. Nog 40 min tot Les Escaliers.",
+    lena: "Ruim grasveld, McDonald's heeft speelhoek.",
+    eetTip: "McDonald's of terras bij het tankstation.",
     gmaps: 'https://www.google.com/maps/search/?api=1&query=Aire+de+Souillac+A20',
   },
   {
@@ -24,6 +63,8 @@ const TANK_STOPS = [
     name: 'Aire de Magnac-Laval',
     highway: 'A20, tussen Limoges en Châteauroux (km 390)',
     desc: 'Rustig parkeerterrein met groenstroken. BP tankstation, snackbar en schaduwrijke picknickplaats.',
+    lena: 'Schaduwrijke picknickplaats met ruimte om te rennen.',
+    eetTip: 'Snackbar of eigen picknick op de grasvlakte.',
     gmaps: 'https://www.google.com/maps/search/?api=1&query=Aire+de+Magnac-Laval+A20',
   },
   {
@@ -31,28 +72,17 @@ const TANK_STOPS = [
     name: 'Aire de Thivars',
     highway: 'N10 / A11, vlak voor Chartres',
     desc: 'Laatste stop voor Chartres. Total station, boulangerie in het nabijgelegen dorp Thivars (300 m lopen). Perfect om de dag door te nemen.',
+    lena: 'Groenstrook naast parkeerterrein.',
+    eetTip: 'Boulangerie Thivars op 300 m lopen — vers brood en croissants.',
     gmaps: 'https://www.google.com/maps/search/?api=1&query=Aire+Thivars+N10+Chartres',
   },
 ]
-
-const LEGS = [
-  { date: '12 juni', label: 'Dag 1 (heen)', from: 'Amersfoort', to: 'Atelier des Sens 89', duration: 'ca. 6 uur', via: 'Via Antwerpen, Reims, Troyes, Auxerre', type: 'heen' },
-  { date: '13 juni', label: 'Dag 2 (heen)', from: 'Atelier des Sens 89', to: 'Les Escaliers', duration: 'ca. 5,5 uur', via: 'Via Châteauroux en Cahors', type: 'heen' },
-  { date: '27 juni', label: 'Dag 1 (terug)', from: 'Les Escaliers', to: 'Chartres', duration: 'ca. 5,5 uur', via: 'Via Limoges en Orléans', type: 'terug' },
-  { date: '28-29 juni', label: 'Chartres', from: '', to: '', duration: '2 nachten', via: 'Kathedraal (UNESCO), Chartres en Lumières', type: 'stop' },
-  { date: '29 juni', label: 'Dag 3 (terug)', from: 'Chartres', to: 'Amersfoort', duration: 'ca. 6 uur', via: 'Via Amiens en Antwerpen', type: 'terug' },
-]
-
-const LEG_STYLES: Record<string, { bg: string; border: string }> = {
-  heen:  { bg: 'oklch(92% 0.05 218)', border: 'oklch(65% 0.10 218)' },
-  terug: { bg: 'oklch(93% 0.05 40)',  border: 'oklch(57% 0.14 40)' },
-  stop:  { bg: 'oklch(92% 0.07 83)',  border: 'oklch(79% 0.16 83)' },
-}
 
 export default function RoutePage() {
   const [arrivalLeg, setArrivalLeg] = useState('')
   const [arrivalSent, setArrivalSent] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [activeTab, setActiveTab] = useState<'heen' | 'terug'>('heen')
 
   const sendArrival = async (leg: string) => {
     await fetch('/api/safe-arrival', {
@@ -65,7 +95,7 @@ export default function RoutePage() {
   }
 
   return (
-    <div className="px-4 pt-5">
+    <div className="px-4 pt-5 pb-28">
       <h1
         className="text-3xl font-medium mb-4"
         style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
@@ -73,182 +103,87 @@ export default function RoutePage() {
         Route
       </h1>
 
-      {/* Map */}
-      <div
-        className="rounded-2xl overflow-hidden shadow-blue mb-4 h-64"
-        style={{ border: '1px solid #E4D9C8' }}
+      {/* Vertreklijst banner */}
+      <a
+        href="/vertreklijst"
+        className="flex items-center gap-3 rounded-2xl p-4 mb-5 shadow-blue"
+        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8', textDecoration: 'none' }}
       >
-        <RouteMap />
+        <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>
+          checklist
+        </span>
+        <div className="flex-1">
+          <p className="font-semibold text-on-surface text-sm">Vertreklijst</p>
+          <p className="text-xs text-on-surface-variant">Check alles vóór de heenreis →</p>
+        </div>
+        <span className="material-symbols-outlined text-base" style={{ color: '#A8937A' }}>chevron_right</span>
+      </a>
+
+      {/* Tabs Heen / Terug */}
+      <div
+        className="flex rounded-2xl overflow-hidden p-1 mb-5"
+        style={{ background: '#F0E9DA' }}
+      >
+        {([
+          { value: 'heen',  label: 'Heenreis',  emoji: '🚗' },
+          { value: 'terug', label: 'Terugreis', emoji: '🏠' },
+        ] as const).map(t => (
+          <button
+            key={t.value}
+            onClick={() => setActiveTab(t.value)}
+            className="flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+            style={
+              activeTab === t.value
+                ? { background: '#FAF7F0', color: '#2C2316', boxShadow: '0 1px 3px rgba(44,35,22,0.1)' }
+                : { color: '#A8937A' }
+            }
+          >
+            <span>{t.emoji}</span>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Legend */}
-      <div className="flex gap-5 mb-5">
-        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-          <div className="w-6 h-0.5" style={{ background: 'oklch(65% 0.10 218)' }} />
-          <span>Heenreis</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-          <div
-            className="w-6 h-0.5"
-            style={{ background: 'oklch(57% 0.14 40)', borderTop: '2px dashed oklch(57% 0.14 40)' }}
-          />
-          <span>Terugreis</span>
-        </div>
-      </div>
+      {activeTab === 'heen' && (
+        <HeenreisSection tankStops={TANK_STOPS.filter(t => t.leg === 'heen')} />
+      )}
 
-      {/* Journey legs */}
-      <section className="mb-6">
-        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-          Reisplan
-        </div>
-        <div className="flex flex-col gap-3">
-          {LEGS.map((leg, i) => {
-            const s = LEG_STYLES[leg.type]
-            return (
-              <div
-                key={i}
-                className="rounded-2xl border p-4"
-                style={{ background: s.bg, borderColor: `${s.border}40` }}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#A8937A' }}>
-                      {leg.date}
-                    </p>
-                    <p className="font-semibold text-on-surface">{leg.label}</p>
-                    {leg.from && (
-                      <p className="text-sm text-on-surface-variant">{leg.from} → {leg.to}</p>
-                    )}
-                    <p className="text-xs text-on-surface-variant mt-1">{leg.via}</p>
-                  </div>
-                  <span
-                    className="text-xs font-semibold rounded-full px-2 py-0.5"
-                    style={{ background: 'rgba(255,255,255,0.7)', color: '#6B5A3E' }}
-                  >
-                    {leg.duration}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
+      {activeTab === 'terug' && (
+        <TerugreisSection tankStops={TANK_STOPS.filter(t => t.leg === 'terug')} />
+      )}
 
-      {/* Verblijf */}
+      {/* Verblijf Les Escaliers */}
       <section className="mb-6">
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
           Verblijf
         </div>
         <div
-          className="rounded-2xl p-4 mb-3"
-          style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}
+          className="rounded-2xl p-4 shadow-blue"
+          style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
         >
           <div className="flex items-start gap-3">
             <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>
               holiday_village
             </span>
-            <div>
+            <div className="flex-1">
               <h3 className="font-semibold text-on-surface">Les Escaliers de La Combe</h3>
               <p className="text-xs text-on-surface-variant">Porte-du-Quercy · Eigenaren: Ilse & Coen</p>
+              <p className="text-xs text-on-surface-variant mt-1">La Combe, 82240 Porte-du-Quercy, France</p>
               <div className="mt-2 flex flex-col gap-1">
                 <p className="text-xs"><span className="font-semibold">13–19 juni:</span> Safaritent</p>
                 <p className="text-xs"><span className="font-semibold">20–27 juni:</span> Gîte L 🍄 (paddenstoelen-stapelbed voor Lena!)</p>
               </div>
-              <a
-                href="https://lesescaliers.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-semibold mt-2 block"
-                style={{ color: 'oklch(65% 0.10 218)' }}
-              >
-                lesescaliers.com →
-              </a>
+              <div className="flex gap-3 mt-2 flex-wrap">
+                <a href="https://lesescaliers.com" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                  lesescaliers.com →
+                </a>
+                <a href="https://www.google.com/maps/search/?api=1&query=Les+Escaliers+de+La+Combe+Porte-du-Quercy" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                  Google Maps →
+                </a>
+              </div>
             </div>
           </div>
         </div>
-
-        <div
-          className="rounded-2xl p-4 mb-3"
-          style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}
-        >
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>hotel</span>
-            <div>
-              <h3 className="font-semibold text-on-surface">Atelier des Sens 89</h3>
-              <p className="text-xs text-on-surface-variant">Bourgondië · 12–13 juni</p>
-              <p className="text-xs text-on-surface-variant mt-1">Studio met keuken, zwembad, table d&apos;hôtes</p>
-              <a
-                href="https://atelierdessens89.fr"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-semibold mt-2 block"
-                style={{ color: 'oklch(65% 0.10 218)' }}
-              >
-                atelierdessens89.fr →
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="rounded-2xl p-4"
-          style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}
-        >
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>hotel</span>
-            <div>
-              <h3 className="font-semibold text-on-surface">Hotel Henri IV</h3>
-              <p className="text-xs text-on-surface-variant">Chartres · 27–29 juni</p>
-              <p className="text-xs text-on-surface-variant mt-1">Parkeergarage onder het hotel. Kathedraal & lichtshows.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Tankstops */}
-      <section className="mb-6">
-        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-          Tankstops
-        </div>
-        {(['heen', 'terug'] as const).map(leg => (
-          <div key={leg} className="mb-3">
-            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2">
-              {leg === 'heen' ? 'Heenreis' : 'Terugreis'}
-            </p>
-            <div className="flex flex-col gap-2">
-              {TANK_STOPS.filter(t => t.leg === leg).map(stop => (
-                <div
-                  key={stop.name}
-                  className="rounded-2xl p-3"
-                  style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.3)' }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <p className="font-semibold text-sm text-on-surface">{stop.name}</p>
-                      <p className="text-xs text-on-surface-variant font-medium">{stop.highway}</p>
-                      <p className="text-xs text-on-surface-variant mt-1">{stop.desc}</p>
-                    </div>
-                    <span
-                      className="material-symbols-outlined text-xl flex-shrink-0"
-                      style={{ color: 'oklch(79% 0.16 83)', fontVariationSettings: "'FILL' 1" }}
-                    >
-                      local_gas_station
-                    </span>
-                  </div>
-                  <a
-                    href={stop.gmaps}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold mt-2 block"
-                    style={{ color: 'oklch(65% 0.10 218)' }}
-                  >
-                    Maps →
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
       </section>
 
       {/* Auto */}
@@ -324,5 +259,260 @@ export default function RoutePage() {
         )}
       </section>
     </div>
+  )
+}
+
+function HeenreisSection({ tankStops }: { tankStops: typeof TANK_STOPS }) {
+  return (
+    <div className="mb-6">
+      {/* Kaart heenreis */}
+      <div
+        className="rounded-2xl overflow-hidden shadow-blue mb-4 h-52"
+        style={{ border: '1px solid #E4D9C8' }}
+      >
+        <LegMap
+          route={HEEN_ROUTE}
+          markers={HEEN_MARKERS}
+          color="#4D96FF"
+        />
+      </div>
+
+      {/* Etappes */}
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        Etappes heenreis
+      </div>
+      <div className="flex flex-col gap-3 mb-5">
+        <EtappeCard
+          date="12 juni"
+          label="Dag 1 — Amersfoort → Atelier des Sens"
+          from="Amersfoort"
+          to="Atelier des Sens 89"
+          duration="ca. 6 uur"
+          via="Via Antwerpen, Reims, Troyes, Auxerre"
+          color="oklch(65% 0.10 218)"
+          mapsUrl="https://www.google.com/maps/dir/Amersfoort/Venoy+89270+France"
+        />
+        <EtappeCard
+          date="13 juni"
+          label="Dag 2 — Atelier des Sens → Les Escaliers"
+          from="Atelier des Sens 89"
+          to="Les Escaliers"
+          duration="ca. 5,5 uur"
+          via="Via Châteauroux en Cahors"
+          color="oklch(65% 0.10 218)"
+          mapsUrl="https://www.google.com/maps/dir/Venoy+89270+France/Porte-du-Quercy+82240+France"
+        />
+      </div>
+
+      {/* Overnachting heenreis */}
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        Overnachting (12 juni)
+      </div>
+      <div
+        className="rounded-2xl p-4 mb-5 shadow-blue"
+        style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}
+      >
+        <div className="flex items-start gap-3">
+          <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>hotel</span>
+          <div className="flex-1">
+            <h3 className="font-semibold text-on-surface">Atelier des Sens 89</h3>
+            <p className="text-xs text-on-surface-variant">Route du Moulin Neuf, 89270 Venoy, France</p>
+            <p className="text-xs text-on-surface-variant mt-1">Studio met keuken · zwembad · table d&apos;hôtes</p>
+            <div className="flex gap-3 mt-2 flex-wrap">
+              <a href="https://atelierdessens89.fr" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                atelierdessens89.fr →
+              </a>
+              <a href="https://www.google.com/maps/search/?api=1&query=Atelier+des+Sens+89+Venoy" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                Google Maps →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tankstops heenreis */}
+      <TankStopsSection stops={tankStops} />
+    </div>
+  )
+}
+
+function TerugreisSection({ tankStops }: { tankStops: typeof TANK_STOPS }) {
+  return (
+    <div className="mb-6">
+      {/* Kaart terugreis */}
+      <div
+        className="rounded-2xl overflow-hidden shadow-blue mb-4 h-52"
+        style={{ border: '1px solid #E4D9C8' }}
+      >
+        <LegMap
+          route={TERUG_ROUTE}
+          markers={TERUG_MARKERS}
+          color="oklch(57% 0.14 40)"
+          dashed
+        />
+      </div>
+
+      {/* Etappes */}
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        Etappes terugreis
+      </div>
+      <div className="flex flex-col gap-3 mb-5">
+        <EtappeCard
+          date="27 juni"
+          label="Dag 1 — Les Escaliers → Chartres"
+          from="Les Escaliers"
+          to="Chartres"
+          duration="ca. 5,5 uur"
+          via="Via Limoges en Orléans"
+          color="oklch(57% 0.14 40)"
+          mapsUrl="https://www.google.com/maps/dir/Porte-du-Quercy+82240+France/Chartres+28000+France"
+        />
+        <EtappeCard
+          date="28-29 juni"
+          label="Chartres — 2 nachten"
+          from=""
+          to=""
+          duration="2 nachten"
+          via="Kathedraal (UNESCO) · Chartres en Lumières"
+          color="oklch(79% 0.16 83)"
+          isStop
+        />
+        <EtappeCard
+          date="29 juni"
+          label="Dag 3 — Chartres → Amersfoort"
+          from="Chartres"
+          to="Amersfoort"
+          duration="ca. 6 uur"
+          via="Via Amiens en Antwerpen"
+          color="oklch(57% 0.14 40)"
+          mapsUrl="https://www.google.com/maps/dir/Chartres+28000+France/Amersfoort+Nederland"
+        />
+      </div>
+
+      {/* Overnachting terugreis */}
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        Overnachting (27–29 juni)
+      </div>
+      <div
+        className="rounded-2xl p-4 mb-5 shadow-blue"
+        style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.2)' }}
+      >
+        <div className="flex items-start gap-3">
+          <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>hotel</span>
+          <div className="flex-1">
+            <h3 className="font-semibold text-on-surface">Hotel Henri IV</h3>
+            <p className="text-xs text-on-surface-variant">31 Rue du Soleil d&apos;Or, 28000 Chartres, France</p>
+            <p className="text-xs text-on-surface-variant mt-1">Parkeergarage onder het hotel · kathedraal op loopafstand</p>
+            <div className="flex gap-3 mt-2 flex-wrap">
+              <a href="https://www.google.com/maps/search/?api=1&query=Hotel+Henri+IV+Chartres" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                Google Maps →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tankstops terugreis */}
+      <TankStopsSection stops={tankStops} />
+    </div>
+  )
+}
+
+function EtappeCard({
+  date, label, from, to, duration, via, color, mapsUrl, isStop,
+}: {
+  date: string; label: string; from: string; to: string
+  duration: string; via: string; color: string
+  mapsUrl?: string; isStop?: boolean
+}) {
+  return (
+    <div
+      className="rounded-2xl border p-4"
+      style={{
+        background: isStop ? 'oklch(92% 0.07 83)' : 'oklch(92% 0.05 218)',
+        borderColor: `${color}40`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#A8937A' }}>{date}</p>
+          <p className="font-semibold text-on-surface text-sm">{label}</p>
+          {from && (
+            <p className="text-xs text-on-surface-variant mt-0.5">{from} → {to}</p>
+          )}
+          <p className="text-xs text-on-surface-variant mt-1">{via}</p>
+          {mapsUrl && (
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold mt-1.5 inline-flex items-center gap-1"
+              style={{ color: 'oklch(65% 0.10 218)' }}
+            >
+              <span className="material-symbols-outlined text-sm">map</span>
+              Route op kaart
+            </a>
+          )}
+        </div>
+        <span
+          className="text-xs font-semibold rounded-full px-2 py-0.5 flex-shrink-0"
+          style={{ background: 'rgba(255,255,255,0.7)', color: '#6B5A3E' }}
+        >
+          {duration}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function TankStopsSection({ stops }: { stops: typeof TANK_STOPS }) {
+  return (
+    <>
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        Tankstops
+      </div>
+      <div className="flex flex-col gap-3 mb-5">
+        {stops.map(stop => (
+          <div
+            key={stop.name}
+            className="rounded-2xl p-3"
+            style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.3)' }}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex-1">
+                <p className="font-semibold text-sm text-on-surface">{stop.name}</p>
+                <p className="text-xs text-on-surface-variant font-medium">{stop.highway}</p>
+                <p className="text-xs text-on-surface-variant mt-1">{stop.desc}</p>
+              </div>
+              <span
+                className="material-symbols-outlined text-xl flex-shrink-0"
+                style={{ color: 'oklch(79% 0.16 83)', fontVariationSettings: "'FILL' 1" }}
+              >
+                local_gas_station
+              </span>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <div className="flex items-center gap-1 text-xs" style={{ color: '#6B5A3E' }}>
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>child_care</span>
+                {stop.lena}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-xs mt-1" style={{ color: '#6B5A3E' }}>
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>restaurant</span>
+              {stop.eetTip}
+            </div>
+            <a
+              href={stop.gmaps}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold mt-2 block"
+              style={{ color: 'oklch(65% 0.10 218)' }}
+            >
+              Maps →
+            </a>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }

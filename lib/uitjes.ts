@@ -11,12 +11,13 @@ export interface Uitje {
   wiki?: string
   site?: string
   gmaps: string
+  marktDag?: string  // komma-gescheiden dag(en): 'woensdag', 'zaterdag', etc.
 }
 
 export const uitjes: Uitje[] = [
-  { id: 'u1', type: 'entertainment', name: "Plan d'Eau des Chênes", desc: "Recreatiemeer met veilig zandstrandje, ideaal voor Lena.", drive: "15 min", coords: [44.385, 1.140], wiki: "https://fr.wikipedia.org/wiki/Montaigu-de-Quercy", gmaps: "https://www.google.com/maps/search/?api=1&query=Plan+d'Eau+des+Chênes+Montaigu-de-Quercy" },
-  { id: 'u2', type: 'entertainment', name: "Parc en Ciel", desc: "Natuurpark met klimparcours en zwemvijver.", drive: "45 min", coords: [44.628, 0.872], wiki: "https://fr.wikipedia.org/wiki/Biron_(Dordogne)", gmaps: "https://www.google.com/maps/search/?api=1&query=Parc+en+Ciel+Biron" },
-  { id: 'u6', type: 'entertainment', name: "La Forêt des Singes", desc: "Apenbos waar makaken vrij rondlopen, geweldig voor kleuters.", drive: "1u 20m", coords: [44.805, 1.623], wiki: "https://fr.wikipedia.org/wiki/La_For%C3%AAt_des_singes_(Rocamadour)", site: "https://www.la-foret-des-singes.com/", gmaps: "https://www.google.com/maps/search/?api=1&query=La+Forêt+des+Singes+Rocamadour" },
+  { id: 'u1', type: 'entertainment', name: "Plan d'Eau des Chênes", desc: "Recreatiemeer met veilig zandstrandje, ideaal voor Lena.", drive: "15 min", coords: [44.385, 1.140], wiki: "https://en.wikipedia.org/wiki/Montaigu-de-Quercy", gmaps: "https://www.google.com/maps/search/?api=1&query=Plan+d'Eau+des+Chênes+Montaigu-de-Quercy" },
+  { id: 'u2', type: 'entertainment', name: "Parc en Ciel", desc: "Natuurpark met klimparcours en zwemvijver.", drive: "45 min", coords: [44.628, 0.872], wiki: "https://en.wikipedia.org/wiki/Biron,_Dordogne", gmaps: "https://www.google.com/maps/search/?api=1&query=Parc+en+Ciel+Biron" },
+  { id: 'u6', type: 'entertainment', name: "La Forêt des Singes", desc: "Apenbos waar makaken vrij rondlopen, geweldig voor kleuters.", drive: "1u 20m", coords: [44.805, 1.623], wiki: "https://en.wikipedia.org/wiki/La_For%C3%AAt_des_Singes", site: "https://www.la-foret-des-singes.com/", gmaps: "https://www.google.com/maps/search/?api=1&query=La+Forêt+des+Singes+Rocamadour" },
   { id: 'u13', type: 'entertainment', name: "Walygator Sud-Ouest", desc: "Groot pretpark met kindergedeelte.", drive: "1u 15m", coords: [44.185, 0.575], site: "https://www.walygatorparc.com/sudouest/", gmaps: "https://www.google.com/maps/search/?api=1&query=Walygator+Sud-Ouest" },
   { id: 'u14', type: 'entertainment', name: "Animaparc Occitanie", desc: "Dierenpark, dinobos én pretpark in één. Perfect voor jonge kinderen.", drive: "1u 30m", coords: [43.738, 1.082], site: "https://www.animaparc.com/", gmaps: "https://www.google.com/maps/search/?api=1&query=Animaparc+Occitanie" },
   { id: 'u3', type: 'culture', name: "Kasteel van Bonaguil", desc: "Indrukwekkende kasteelruïne in een groene vallei.", drive: "25 min", coords: [44.538, 1.011], wiki: "https://nl.wikipedia.org/wiki/Kasteel_van_Bonaguil", gmaps: "https://www.google.com/maps/search/?api=1&query=Château+de+Bonaguil" },
@@ -34,6 +35,11 @@ export const uitjes: Uitje[] = [
   { id: 'u10', type: 'food', name: "Le Café du Centre", desc: "Gezellig terras in Tournon-d'Agenais.", drive: "20 min", coords: [44.399, 0.995], gmaps: "https://www.google.com/maps/search/?api=1&query=Le+Café+du+Centre+Tournon-d'Agenais" },
   { id: 'u11', type: 'shop', name: "Intermarché Montaigu", desc: "Grote supermarkt, dichtbij.", drive: "15 min", coords: [44.341, 1.015], gmaps: "https://www.google.com/maps/search/?api=1&query=Intermarché+Montaigu-de-Quercy" },
   { id: 'u12', type: 'shop', name: "Carrefour Prayssac", desc: "Grote supermarkt in Prayssac.", drive: "25 min", coords: [44.505, 1.187], gmaps: "https://www.google.com/maps/search/?api=1&query=Carrefour+Prayssac" },
+  // Marktdagen — verschijnen in 'Lekker eten' en 'Boodschappen' categorieën
+  { id: 'markt-cahors', type: 'food', vegetarian: true, name: "Markt Cahors", desc: "Grote overdekte markt plus openluchtmarkt. Groenten, kaas, honing en lokale producten. Op woensdag en zaterdag in het hart van de stad.", drive: "45 min", coords: [44.447, 1.442], marktDag: 'woensdag,zaterdag', wiki: "https://nl.wikipedia.org/wiki/Cahors", gmaps: "https://www.google.com/maps/search/?api=1&query=marché+Cahors" },
+  { id: 'markt-lauzerte', type: 'food', vegetarian: true, name: "Markt Lauzerte", desc: "Sfeervolle zaterdagsmarkt op het centrale plein van dit mooie bastide-dorpje. Goed te combineren met L'Estaminet.", drive: "25 min", coords: [44.256, 1.137], marktDag: 'zaterdag', wiki: "https://nl.wikipedia.org/wiki/Lauzerte", gmaps: "https://www.google.com/maps/search/?api=1&query=marché+Lauzerte" },
+  { id: 'markt-montcuq', type: 'food', vegetarian: true, name: "Markt Montcuq", desc: "Gezellige zondagsmarkt in het sfeervol plein van Montcuq. Perfect te combineren met lunch bij Le Petit Rapporteur.", drive: "20 min", coords: [44.339, 1.208], marktDag: 'zondag', wiki: "https://nl.wikipedia.org/wiki/Montcuq", gmaps: "https://www.google.com/maps/search/?api=1&query=marché+Montcuq" },
+  { id: 'markt-prayssac', type: 'shop', name: "Markt Prayssac", desc: "Kleine maar leuke vrijdagsmarkt, handig te combineren met boodschappen bij Carrefour verderop.", drive: "25 min", coords: [44.505, 1.187], marktDag: 'vrijdag', gmaps: "https://www.google.com/maps/search/?api=1&query=marché+Prayssac" },
 ]
 
 export function getUitjeById(id: string): Uitje | undefined {
