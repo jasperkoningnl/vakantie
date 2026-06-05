@@ -19,19 +19,19 @@ async function getLatestArrival(): Promise<SafeArrival | null> {
 }
 
 const TIMELINE = [
-  { date: '12 juni', label: 'Amersfoort', sub: 'Vertrek' },
-  { date: '12–13 juni', label: 'Atelier des Sens', sub: 'Bourgondië' },
-  { date: '13–27 juni', label: 'Les Escaliers', sub: 'Porte-du-Quercy' },
-  { date: '27 juni', label: 'Chartres', sub: '2 nachten' },
-  { date: '29 juni', label: 'Thuis', sub: 'Amersfoort' },
+  { date: '12 juni', label: 'Amersfoort', sub: 'Vertrek', icon: '🏠' },
+  { date: '12–13 juni', label: 'Atelier des Sens', sub: 'Bourgondië · 1 nacht', icon: '🛏️' },
+  { date: '13–27 juni', label: 'Les Escaliers', sub: 'Porte-du-Quercy · 2 weken', icon: '🌻' },
+  { date: '27–29 juni', label: 'Chartres', sub: '2 nachten · Kathedraal', icon: '⛪' },
+  { date: '29 juni', label: 'Thuis', sub: 'Amersfoort', icon: '🏁' },
 ]
 
 const STEP_COLORS = [
-  'oklch(57% 0.14 40)',  /* terra — departure */
-  'oklch(79% 0.16 83)',  /* gold  — midway */
-  'oklch(58% 0.10 148)', /* sage  — destination */
-  'oklch(65% 0.10 218)', /* ciel  — return night */
-  'oklch(57% 0.14 40)',  /* terra — home */
+  'oklch(57% 0.14 40)',
+  'oklch(65% 0.10 218)',
+  'oklch(58% 0.10 148)',
+  'oklch(79% 0.16 83)',
+  'oklch(57% 0.14 40)',
 ]
 
 export default async function VoorThuisPage() {
@@ -48,76 +48,74 @@ export default async function VoorThuisPage() {
   }
 
   return (
-    <div className="px-4 pt-8 pb-12 max-w-md mx-auto">
-      {/* Postcard-style header */}
-      <div
-        className="rounded-2xl p-5 mb-6 relative overflow-hidden"
-        style={{ background: 'linear-gradient(150deg, oklch(54% 0.14 40) 0%, oklch(44% 0.12 32) 100%)' }}
-      >
-        {/* Decorative stamp */}
-        <div
-          className="absolute top-4 right-4 w-11 h-14 flex flex-col items-center justify-center rounded-sm"
-          style={{ border: '1.5px solid rgba(255,255,255,0.3)' }}
-        >
-          <span className="text-xl">🌻</span>
-          <span className="text-[7px] font-semibold tracking-widest mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>FRANCE</span>
-        </div>
+    <div className="px-4 pt-6 pb-16 max-w-md mx-auto">
 
+      {/* Page header — zelfde stijl als andere pagina's */}
+      <div className="mb-5">
         <div
-          className="text-sm mb-2"
-          style={{ fontFamily: 'var(--font-hand)', color: 'rgba(255,255,255,0.75)' }}
+          className="text-xl font-semibold mb-0.5"
+          style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}
+        >
+          Notre Voyage
+        </div>
+        <h1
+          className="text-3xl font-medium leading-tight"
+          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
         >
           Voor de thuisblijvers
-        </div>
-        <div
-          className="text-3xl font-light mb-3"
-          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: 'white', lineHeight: 1.2 }}
-        >
-          Notre Voyage 🌻
-        </div>
+        </h1>
+      </div>
 
-        {/* Safe arrival status */}
-        {arrival ? (
-          <div
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
-            style={{ background: 'rgba(255,255,255,0.15)' }}
-          >
-            <div className="w-2 h-2 rounded-full" style={{ background: '#5DD68C' }} />
-            <span className="text-xs font-medium text-white">
-              Aangekomen bij {arrival.leg} · {formatTs(arrival.timestamp)}
-            </span>
+      {/* Aankomststatus hero */}
+      <div
+        className="rounded-2xl p-5 mb-6"
+        style={{ background: 'linear-gradient(150deg, oklch(54% 0.14 40) 0%, oklch(44% 0.12 32) 100%)' }}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              Reisupdate
+            </p>
+            <p className="text-lg font-semibold text-white leading-tight">
+              {arrival ? `Aangekomen bij ${arrival.leg}` : 'Nog onderweg'}
+            </p>
+            {arrival && (
+              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                {formatTs(arrival.timestamp)}
+              </p>
+            )}
           </div>
-        ) : (
           <div
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
-            style={{ background: 'rgba(255,255,255,0.15)' }}
+            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: arrival ? 'rgba(93,214,140,0.25)' : 'rgba(255,255,255,0.15)' }}
           >
-            <span className="text-sm">🚗</span>
-            <span className="text-xs font-medium text-white">Nog onderweg — we laten het weten!</span>
+            <span className="text-xl">{arrival ? '✅' : '🚗'}</span>
           </div>
+        </div>
+        {!arrival && (
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+            We sturen een berichtje zodra we ergens aangekomen zijn!
+          </p>
         )}
       </div>
 
-      {/* Route timeline */}
+      {/* Route tijdlijn */}
       <section className="mb-6">
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
           De route
         </div>
-        <div
-          className="rounded-2xl p-4 shadow-blue"
-          style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-        >
+        <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
           <div className="relative">
-            <div className="absolute left-4 top-0 bottom-0 w-0.5" style={{ background: '#E4D9C8' }} />
+            <div className="absolute left-4 top-4 bottom-4 w-0.5" style={{ background: '#E4D9C8' }} />
             {TIMELINE.map((step, i) => (
               <div key={i} className="relative flex gap-4 mb-4 last:mb-0">
                 <div
-                  className="w-8 h-8 rounded-full text-white flex items-center justify-center text-xs font-bold flex-shrink-0 z-10"
+                  className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm flex-shrink-0 z-10"
                   style={{ background: STEP_COLORS[i] }}
                 >
-                  {i + 1}
+                  {step.icon}
                 </div>
-                <div className="pt-1">
+                <div className="pt-0.5">
                   <p className="text-[10px] text-on-surface-variant">{step.date}</p>
                   <p className="font-semibold text-on-surface text-sm">{step.label}</p>
                   <p className="text-xs text-on-surface-variant">{step.sub}</p>
@@ -128,7 +126,7 @@ export default async function VoorThuisPage() {
         </div>
       </section>
 
-      {/* Accommodations */}
+      {/* Overnachtingen */}
       <section className="mb-6">
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
           Overnachtingen
@@ -140,7 +138,7 @@ export default async function VoorThuisPage() {
               region: 'Bourgondië',
               dates: '12–13 juni',
               url: 'https://atelierdessens89.fr',
-              note: 'Studio met keuken, zwembad',
+              note: 'Studio met keuken & zwembad',
             },
             {
               name: 'Les Escaliers de La Combe',
@@ -154,7 +152,7 @@ export default async function VoorThuisPage() {
               region: 'Chartres',
               dates: '27–29 juni',
               url: null,
-              note: 'Parkeergarage aanwezig',
+              note: 'Centrum, parkeergarage aanwezig',
             },
           ].map(acc => (
             <div
@@ -164,7 +162,7 @@ export default async function VoorThuisPage() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold text-on-surface">{acc.name}</h3>
+                  <h3 className="font-semibold text-on-surface text-sm">{acc.name}</h3>
                   <p className="text-xs text-on-surface-variant">{acc.region} · {acc.dates}</p>
                   <p className="text-xs text-on-surface-variant mt-1">{acc.note}</p>
                 </div>
@@ -185,68 +183,30 @@ export default async function VoorThuisPage() {
         </div>
       </section>
 
-      {/* Auto */}
-      <section
-        className="rounded-2xl p-4 mb-6 shadow-blue"
-        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-      >
-        <h2 className="font-semibold text-on-surface mb-3">Auto</h2>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div>
-            <p className="text-xs text-on-surface-variant">Auto</p>
-            <p className="font-semibold">Honda CR-V</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Kleur</p>
-            <p className="font-semibold">Donkerblauw metallic</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Kenteken</p>
-            <p className="font-semibold font-mono">P-162-KB</p>
-          </div>
-          <div>
-            <p className="text-xs text-on-surface-variant">Verzekering</p>
-            <p className="font-semibold">Allianz all-risk</p>
-          </div>
+      {/* Medische situatie */}
+      <section className="mb-6">
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+          Medisch
         </div>
-        <p className="text-xs text-on-surface-variant mt-2">Nul eigen risico · Honda Assistance Europa</p>
+        <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>medical_information</span>
+            <h2 className="font-semibold text-on-surface text-sm">Medische situatie Jasper</h2>
+          </div>
+          <p className="text-sm text-on-surface leading-relaxed">
+            Kaakkyste linksonder, fragiele kaak. Behandelend specialist: Drs. H.G.G.J. Vallen, Meander Amersfoort,{' '}
+            <a href="tel:+31338505050" className="font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>+31 33 850 5050</a>.
+            Bij nood in Frankrijk: CHU Toulouse Purpan, chirurgie maxillo-faciale,{' '}
+            <a href="tel:0561777476" className="font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>05 61 77 74 76</a>.
+          </p>
+        </div>
       </section>
 
-      {/* Phone numbers */}
-      <section
-        className="rounded-2xl p-4 mb-6"
-        style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.3)' }}
-      >
-        <h2 className="font-semibold text-on-surface mb-2">Telefoonnummers</h2>
-        <p className="text-sm text-on-surface-variant italic">[INVULLEN DOOR JASPER VOOR DEPLOY]</p>
-      </section>
-
-      {/* Medical Jasper */}
-      <section
-        className="rounded-2xl p-4 mb-6 shadow-blue"
-        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-      >
-        <h2 className="font-semibold text-on-surface mb-2 flex items-center gap-2">
-          <span className="material-symbols-outlined text-on-surface-variant text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>medical_information</span>
-          Medische situatie Jasper
-        </h2>
-        <p className="text-sm text-on-surface leading-relaxed">
-          Kaakkyste linksonder, fragiele kaak. Behandelend specialist: Drs. H.G.G.J. Vallen, Meander Amersfoort,{' '}
-          <a href="tel:+31338505050" className="font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>+31 33 850 5050</a>.
-          Bij nood in Frankrijk: CHU Toulouse Purpan, chirurgie maxillo-faciale,{' '}
-          <a href="tel:0561777476" className="font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>05 61 77 74 76</a>.
-        </p>
-      </section>
-
-      {/* Emergency numbers */}
-      <section
-        className="rounded-2xl p-4 mb-6 shadow-blue"
-        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-      >
-        <h2 className="font-semibold text-on-surface mb-3 flex items-center gap-2">
-          <span className="material-symbols-outlined" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>emergency</span>
+      {/* Noodoproepen */}
+      <section className="mb-6">
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
           Noodoproepen Frankrijk
-        </h2>
+        </div>
         <div className="flex gap-3">
           {[
             { emoji: '🚑', number: '112', label: 'Alles',    color: '#C0392B', bg: '#FDECEA' },
@@ -266,6 +226,35 @@ export default async function VoorThuisPage() {
           ))}
         </div>
       </section>
+
+      {/* Auto — voor als er iets is */}
+      <section className="mb-6">
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+          Onze auto
+        </div>
+        <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p className="text-xs text-on-surface-variant">Auto</p>
+              <p className="font-semibold">Honda CR-V</p>
+            </div>
+            <div>
+              <p className="text-xs text-on-surface-variant">Kleur</p>
+              <p className="font-semibold">Donkerblauw metallic</p>
+            </div>
+            <div>
+              <p className="text-xs text-on-surface-variant">Kenteken</p>
+              <p className="font-semibold font-mono">P-162-KB</p>
+            </div>
+            <div>
+              <p className="text-xs text-on-surface-variant">Verzekering</p>
+              <p className="font-semibold">Allianz all-risk</p>
+            </div>
+          </div>
+          <p className="text-xs text-on-surface-variant mt-2">Nul eigen risico · Honda Assistance Europa</p>
+        </div>
+      </section>
+
     </div>
   )
 }

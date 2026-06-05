@@ -21,6 +21,7 @@ export default function DagboekPage() {
   const { data: session } = useSession()
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({})
   const [photos, setPhotos] = useState<Record<string, PhotoMeta[]>>({})
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Record<string, string[]>>({})
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
@@ -38,6 +39,11 @@ export default function DagboekPage() {
         setEntries(map)
       })
       .catch(() => {})
+
+    try {
+      const saved = localStorage.getItem('dagboek_selected_photos')
+      if (saved) setSelectedPhotoIds(JSON.parse(saved))
+    } catch {}
   }, [])
 
   const filledEntries = Object.values(entries).filter(e => e.actual_text || e.mood_emoji)
@@ -85,6 +91,25 @@ export default function DagboekPage() {
     setSaving(null)
   }
 
+  const togglePhotoSelection = (date: string, photoId: string, allPhotoIds: string[]) => {
+    setSelectedPhotoIds(prev => {
+      const current = prev[date] ?? allPhotoIds
+      const next = current.includes(photoId)
+        ? current.filter(id => id !== photoId)
+        : [...current, photoId]
+      const updated = { ...prev, [date]: next }
+      localStorage.setItem('dagboek_selected_photos', JSON.stringify(updated))
+      return updated
+    })
+  }
+
+  const getSelectedPhotos = (date: string): PhotoMeta[] => {
+    const dayPhotos = photos[date] || []
+    const sel = selectedPhotoIds[date]
+    if (!sel) return dayPhotos
+    return dayPhotos.filter(p => sel.includes(p.id))
+  }
+
   const generateStory = async (date: string) => {
     setGenerating(date)
     const entry = entries[date] || {}
@@ -96,7 +121,7 @@ export default function DagboekPage() {
         plan_text: entry.plan_text,
         actual_text: entry.actual_text,
         mood_emoji: entry.mood_emoji,
-        photos: photos[date] || [],
+        photos: getSelectedPhotos(date),
       }),
     })
     if (res.ok) {
@@ -275,7 +300,7 @@ export default function DagboekPage() {
 
               {isExpanded && (
                 <div className="px-4 pb-4" style={{ borderTop: '1px solid #E4D9C8' }}>
-                  {/* Photo strip */}
+                  {/* Photo grid met selectie */}
                   {session && (
                     <div className="mt-3 mb-3">
                       {loadingPhotos === date ? (
@@ -284,16 +309,60 @@ export default function DagboekPage() {
                           Foto&apos;s laden…
                         </div>
                       ) : dayPhotos.length > 0 ? (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {dayPhotos.slice(0, 6).map(p => (
-                            <img
-                              key={p.id}
-                              src={`${p.baseUrl}=w200-h200-c`}
-                              alt={p.filename}
-                              className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
-                            />
-                          ))}
-                        </div>
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                              Foto&apos;s ({(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length}/{dayPhotos.length} geselecteerd)
+                            </p>
+                            <button
+                              onClick={() => {
+                                const allIds = dayPhotos.map(p => p.id)
+                                const current = selectedPhotoIds[date] ?? allIds
+                                const allSelected = current.length === allIds.length
+                                const updated = { ...selectedPhotoIds, [date]: allSelected ? [] : allIds }
+                                setSelectedPhotoIds(updated)
+                                localStorage.setItem('dagboek_selected_photos', JSON.stringify(updated))
+                              }}
+                              className="text-[10px] font-semibold"
+                              style={{ color: 'oklch(65% 0.10 218)' }}
+                            >
+                              {(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length === dayPhotos.length ? 'Geen' : 'Alle'}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {dayPhotos.map(p => {
+                              const allIds = dayPhotos.map(pp => pp.id)
+                              const isSelected = (selectedPhotoIds[date] ?? allIds).includes(p.id)
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => togglePhotoSelection(date, p.id, allIds)}
+                                  className="relative aspect-square rounded-xl overflow-hidden"
+                                >
+                                  <img
+                                    src={`${p.baseUrl}=w200-h200-c`}
+                                    alt={p.filename}
+                                    className="w-full h-full object-cover transition-opacity"
+                                    style={{ opacity: isSelected ? 1 : 0.35 }}
+                                  />
+                                  <div
+                                    className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+                                    style={isSelected
+                                      ? { background: 'oklch(58% 0.10 148)' }
+                                      : { background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)' }
+                                    }
+                                  >
+                                    {isSelected && (
+                                      <svg width="10" height="10" viewBox="0 0 10 10">
+                                        <path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </>
                       ) : photos[date] !== undefined ? (
                         <p className="text-xs text-on-surface-variant italic">Geen foto&apos;s op deze dag gevonden in Google Photos.</p>
                       ) : null}

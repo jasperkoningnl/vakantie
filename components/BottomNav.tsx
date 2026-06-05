@@ -6,7 +6,7 @@ const nav = [
   { href: '/vandaag', label: 'Vandaag' },
   { href: '/uitjes',  label: 'Uitjes'  },
   { href: '/dagboek', label: 'Dagboek' },
-  { href: '/medisch', label: 'Medisch' },
+  { href: '/medisch', label: 'Praktisch' },
   { href: '/route',   label: 'Route'   },
 ]
 

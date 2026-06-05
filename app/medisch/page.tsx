@@ -73,7 +73,7 @@ export default function MedischPage() {
         className="text-3xl font-medium mb-4"
         style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
       >
-        Medisch
+        Praktisch
       </h1>
 
       {/* Sub-tabs */}

@@ -61,6 +61,22 @@ function isAfter17Paris(): boolean {
   return parisHour >= 17
 }
 
+function haversineKm(a: [number, number], b: [number, number]): number {
+  const R = 6371
+  const dLat = (b[0] - a[0]) * Math.PI / 180
+  const dLon = (b[1] - a[1]) * Math.PI / 180
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+}
+
+function getTodayBaseCoords(): [number, number] | null {
+  const today = new Date().toISOString().split('T')[0]
+  const entry = reiskalender[today]
+  if (!entry) return null
+  if (entry.type === 'vakantie' || entry.type === 'verblijf') return entry.coords
+  return null
+}
+
 function getRainWarning(weather: WeatherData | null): string | null {
   if (!weather?.daily?.precipitation_probability_max) return null
   const tomorrowProb = weather.daily.precipitation_probability_max[1]
@@ -130,6 +146,7 @@ export default function VandaagPage() {
   const isReisdag = todayEntry?.type === 'reisdag'
   const vandaagMarkten = getTodayMarkten()
   const after17 = isAfter17Paris()
+  const vandaagMarktUitjeIds = uitjes.filter(u => u.marktDag && isTodayMarkt(u)).map(u => u.id)
 
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
@@ -303,6 +320,9 @@ export default function VandaagPage() {
 
       <WeatherCard weather={weather} />
 
+      {/* In de buurt — op vakantiedagen met locatie */}
+      {userLocation && !isReisdag && <NearMeCard location={userLocation} />}
+
       {/* Vertreklijst banner — vóór 13 juni */}
       {showVertreklijst && (
         <a
@@ -331,14 +351,33 @@ export default function VandaagPage() {
 
       {/* Marktdag banner */}
       {vandaagMarkten.length > 0 && (phase === 'build' || phase === 'select') && (
-        <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
-          <span className="text-xl">🛒</span>
-          <div>
-            <p className="text-sm font-semibold text-on-surface">Marktdag vandaag!</p>
-            {vandaagMarkten.map((m, i) => (
-              <p key={i} className="text-xs" style={{ color: '#6B5A3E' }}>{m.plaats} — {m.omschrijving}</p>
-            ))}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
+          <div className="flex items-start gap-2 mb-2">
+            <span className="text-xl">🛒</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-on-surface">Marktdag vandaag!</p>
+              {vandaagMarkten.map((m, i) => (
+                <p key={i} className="text-xs" style={{ color: '#6B5A3E' }}>{m.plaats} — {m.omschrijving}</p>
+              ))}
+            </div>
           </div>
+          {vandaagMarktUitjeIds.length > 0 && (
+            <button
+              onClick={() => {
+                setBasketIds(prev => {
+                  const next = [...new Set([...prev, ...vandaagMarktUitjeIds])]
+                  localStorage.setItem('dagplan_basket', JSON.stringify(next))
+                  return next
+                })
+                setPhase('confirm')
+              }}
+              className="w-full rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-1.5"
+              style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}
+            >
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
+              Voeg markt toe aan dag →
+            </button>
+          )}
         </div>
       )}
 
@@ -624,9 +663,28 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
         </div>
       )}
 
-      {/* Tussenstop zoeken */}
+      {/* Snelle acties & tussenstop */}
       {userLocation && (
         <div className="mb-5">
+          <div className="flex gap-2 mb-3">
+            {[
+              { icon: '⛽', label: 'Tanken', query: 'station essence' },
+              { icon: '🍽️', label: 'Eten', query: 'restaurant' },
+              { icon: '🏘️', label: 'Dorpje', query: 'village' },
+            ].map(a => (
+              <a
+                key={a.query}
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.query)}&near=${userLocation.lat},${userLocation.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3"
+                style={{ background: '#FAF7F0', border: '2px solid #E4D9C8' }}
+              >
+                <span className="text-xl">{a.icon}</span>
+                <span className="text-xs font-semibold" style={{ color: '#6B5A3E' }}>{a.label}</span>
+              </a>
+            ))}
+          </div>
           <button
             onClick={zoekTussenstop}
             disabled={tussenstopLoading}
@@ -801,7 +859,11 @@ function CategoryBuildPhase({
         <div className="mt-2">
           <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Of kies direct een uitje</p>
           <div className="flex flex-col gap-3">
-            {uitjes.filter(u => !u.marktDag).slice(0, 5).map(u => (
+            {uitjes.filter(u => {
+              if (u.marktDag) return false
+              const base = getTodayBaseCoords()
+              return !base || haversineKm(u.coords, base) <= 250
+            }).slice(0, 5).map(u => (
               <MiniUitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={() => {}} />
             ))}
             <a href="/uitjes" className="text-center text-sm font-semibold py-2" style={{ color: 'oklch(65% 0.10 218)' }}>
@@ -832,7 +894,10 @@ function SelectPhase({
   onConfirm: () => void
 }) {
   const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES.find(c => c.value === selectedCats[0])!
-  const catUitjes = uitjes.filter(activeCat.uitjeFilter)
+  const baseCoords = getTodayBaseCoords()
+  const catUitjes = uitjes
+    .filter(activeCat.uitjeFilter)
+    .filter(u => !baseCoords || haversineKm(u.coords, baseCoords) <= 250)
 
   return (
     <div>
@@ -1543,6 +1608,36 @@ function PlanMorgenSection({
           )}
         </>
       )}
+    </div>
+  )
+}
+
+function NearMeCard({ location }: { location: UserLocation }) {
+  const searches = [
+    { icon: '🥖', label: 'Bakker', query: 'boulangerie' },
+    { icon: '🛒', label: 'Supermarkt', query: 'supermarché' },
+    { icon: '🛝', label: 'Speeltuin', query: 'aire de jeux' },
+  ]
+  return (
+    <div className="rounded-2xl p-4 mb-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
+        In de buurt
+      </div>
+      <div className="flex gap-2">
+        {searches.map(s => (
+          <a
+            key={s.query}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.query)}&near=${location.lat},${location.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3"
+            style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}
+          >
+            <span className="text-2xl">{s.icon}</span>
+            <span className="text-xs font-semibold" style={{ color: '#6B5A3E' }}>{s.label}</span>
+          </a>
+        ))}
+      </div>
     </div>
   )
 }
