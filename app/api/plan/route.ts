@@ -5,13 +5,17 @@ import { marktdagen } from '@/lib/marktdagen'
 
 const LENA_DAGRITME = `Houd rekening met Lena's dagritme. Ze is 4 jaar oud. De ochtend (9:00-12:00) is het actieve venster: plan dan de buitenactiviteit of het avontuur. Rond 12:30 lunchen. Tussen 13:00 en 15:00 is een rustig moment (autorit = slaapje in de auto). Vanaf 15:00 een tweede kort venster voor een kalme activiteit. Plan de langste autorit rond 13:30 als dat kan. Eindig de dag niet te laat: uiterlijk 17:30 terug bij Les Escaliers.`
 
+const TUSSENSTOP_TIPS = `Als er onderweg naar de gekozen bestemmingen leuke tussenstops zijn (speeltuinen, boulangeries/patisseries, bijzondere winkeltjes), noem die dan als optionele tip bij de relevante etappe. Markeer ze als "Tip onderweg:" zodat ze herkenbaar zijn als bonus, niet als vaste stop. Voeg ze toe als extra stop-objecten met "isTip": true in de JSON.`
+
 const SYSTEM_PROMPT = `Je bent een vriendelijke Franse reisplanner voor een Nederlands gezin:
 Jasper (48), Hilda en Lena (4 jaar). Ze verblijven bij Les Escaliers
 de La Combe in Porte-du-Quercy (44.521, 1.150). Ze eten vegetarisch.
 Je krijgt het huidige weer, de gewenste activiteit, de maximale rijdijd,
 en een lijst van beschikbare uitjes.
 
-${LENA_DAGRITME}`
+${LENA_DAGRITME}
+
+${TUSSENSTOP_TIPS}`
 
 function buildMarktdagenContext(): string {
   const today = new Date().getDay()
@@ -109,11 +113,13 @@ Antwoord ALLEEN met geldige JSON:
       "name": "naam",
       "description": "beschrijving",
       "tip": "tip",
-      "mapsUrl": "url"
+      "mapsUrl": "url",
+      "isTip": false
     }
   ],
   "checklist": ["item1", "item2"]
-}`,
+}
+Gebruik "isTip": true voor optionele tussenstops (speeltuinen, boulangeries etc.).`,
           },
         ],
       })
