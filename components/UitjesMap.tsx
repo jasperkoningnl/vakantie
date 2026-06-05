@@ -3,12 +3,15 @@ import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Map as LeafletMap, Marker } from 'leaflet'
 import { Uitje } from '@/lib/uitjes'
+import { speeltuinen } from '@/lib/speeltuinen'
 
 const CATEGORY_COLORS: Record<string, string> = {
   entertainment: '#FF6B6B',
+  nature: '#22c55e',
   culture: '#4D96FF',
   food: '#FFD93D',
-  shop: '#22c55e',
+  shop: '#A8937A',
+  bakery: '#F39C12',
 }
 
 const LES_ESCALIERS: [number, number] = [44.521, 1.150]
@@ -94,6 +97,26 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
         const marker = L.marker(u.coords, { icon }).addTo(map)
         marker.on('click', () => onSelect(u.id))
         markersRef.current[u.id] = marker
+      })
+
+      // Speeltuin markers — small green pins, map-only
+      speeltuinen.forEach(s => {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="width:22px;height:22px;border-radius:50%;background:#16a34a;border:2px solid white;box-shadow:0 1px 5px rgba(0,0,0,0.30);cursor:pointer;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:11px;line-height:1;">🛝</span>
+          </div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        })
+        L.marker(s.coords, { icon, zIndexOffset: -100 })
+          .addTo(map)
+          .bindPopup(`
+            <div style="font-family:sans-serif;min-width:160px;">
+              <p style="font-weight:700;margin:0 0 4px;">${s.name}</p>
+              <a href="${s.gmaps}" target="_blank" style="font-size:11px;color:#4D96FF;font-weight:600;">Open in Maps</a>
+            </div>
+          `)
       })
     })
 
