@@ -5,7 +5,7 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
-type FilterValue = UitjeType | 'all' | 'lena'
+type FilterValue = UitjeType | 'all' | 'lena' | 'nature'
 
 interface Filter {
   label: string
@@ -15,27 +15,32 @@ interface Filter {
 
 const FILTERS: Filter[] = [
   { label: 'Alles',       value: 'all',           icon: 'explore' },
-  { label: 'Lena',        value: 'lena',           icon: 'child_care' },
-  { label: 'Cultuur',     value: 'culture',        icon: 'museum' },
-  { label: 'Natuur',      value: 'entertainment',  icon: 'attractions' },
-  { label: 'Eten',        value: 'food',           icon: 'restaurant' },
-  { label: 'Winkels',     value: 'shop',           icon: 'shopping_cart' },
+  { label: 'Lena',        value: 'lena',          icon: 'child_care' },
+  { label: 'Cultuur',     value: 'culture',       icon: 'museum' },
+  { label: 'Natuur',      value: 'nature',        icon: 'forest' },
+  { label: 'Eten',        value: 'food',          icon: 'restaurant' },
+  { label: 'Bakkertje',   value: 'bakery',        icon: 'bakery_dining' },
+  { label: 'Boodschappen', value: 'shop',         icon: 'shopping_cart' },
 ]
 
-const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14', 'u19']
+const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14', 'u19', 'u22', 'u23', 'u29', 'u30', 'u31', 'u32']
 
 const TYPE_ICONS: Record<string, string> = {
   entertainment: 'attractions',
-  culture: 'museum',
-  food: 'restaurant',
-  shop: 'shopping_cart',
+  nature:        'forest',
+  culture:       'museum',
+  food:          'restaurant',
+  shop:          'shopping_cart',
+  bakery:        'bakery_dining',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   entertainment: 'oklch(79% 0.16 83)',
+  nature:        'oklch(58% 0.10 148)',
   culture:       'oklch(57% 0.14 40)',
   food:          'oklch(65% 0.09 298)',
   shop:          'oklch(65% 0.10 218)',
+  bakery:        'oklch(72% 0.14 60)',
 }
 
 const FILTER_COLORS: Record<string, string> = {
@@ -43,8 +48,10 @@ const FILTER_COLORS: Record<string, string> = {
   lena:          'oklch(79% 0.16 83)',
   culture:       'oklch(57% 0.14 40)',
   entertainment: 'oklch(79% 0.16 83)',
+  nature:        'oklch(58% 0.10 148)',
   food:          'oklch(65% 0.09 298)',
   shop:          'oklch(65% 0.10 218)',
+  bakery:        'oklch(72% 0.14 60)',
 }
 
 export default function UitjesPage() {
@@ -82,6 +89,7 @@ export default function UitjesPage() {
   const filtered = uitjes.filter(u => {
     if (filter === 'all') return true
     if (filter === 'lena') return LENA_IDS.includes(u.id)
+    if (filter === 'nature') return u.type === 'nature' || u.type === 'entertainment'
     return u.type === filter
   })
 

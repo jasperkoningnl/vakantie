@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { uitjes } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
+import { speeltuinen } from '@/lib/speeltuinen'
 
 const LENA_DAGRITME = `Houd rekening met Lena's dagritme. Ze is 4 jaar oud. De ochtend (9:00-12:00) is het actieve venster: plan dan de buitenactiviteit of het avontuur. Rond 12:30 lunchen. Tussen 13:00 en 15:00 is een rustig moment (autorit = slaapje in de auto). Vanaf 15:00 een tweede kort venster voor een kalme activiteit. Plan de langste autorit rond 13:30 als dat kan. Eindig de dag niet te laat: uiterlijk 17:30 terug bij Les Escaliers.`
 
-const TUSSENSTOP_TIPS = `Als er onderweg naar de gekozen bestemmingen leuke tussenstops zijn (speeltuinen, boulangeries/patisseries, bijzondere winkeltjes), noem die dan als optionele tip bij de relevante etappe. Markeer ze als "Tip onderweg:" zodat ze herkenbaar zijn als bonus, niet als vaste stop. Voeg ze toe als extra stop-objecten met "isTip": true in de JSON.`
+const TUSSENSTOP_TIPS = `Als er onderweg naar de gekozen bestemmingen leuke tussenstops zijn (speeltuinen, boulangeries/patisseries, bijzondere winkeltjes), noem die dan als optionele tip bij de relevante etappe. Markeer ze als "Tip onderweg:" zodat ze herkenbaar zijn als bonus, niet als vaste stop. Voeg ze toe als extra stop-objecten met "isTip": true in de JSON. Bekende bakkertjes in de regio (u33–u37): Chez Mado en Maison Petersen in Montcuq, Pain et Chocolat en Boulangerie Larroque in Lauzerte, Du Quercy Vert in Montaigu. Als de route via een van deze plaatsen gaat, stel de bakker dan voor als ochtend-tussenstop.`
 
 const SYSTEM_PROMPT = `Je bent een vriendelijke Franse reisplanner voor een Nederlands gezin:
 Jasper (48), Hilda en Lena (4 jaar). Ze verblijven bij Les Escaliers
@@ -50,8 +51,9 @@ export async function POST(req: NextRequest) {
     const visitedContext = visitedNames?.length
       ? `\nDe volgende uitjes zijn al bezocht en hoef je niet meer voor te stellen: ${(visitedNames as string[]).join(', ')}.`
       : ''
+    const speeltuinenContext = `\nSpeeltuinen in de regio (gebruik als route-tip voor Lena): ${speeltuinen.map(s => `${s.name} (${s.coords[0].toFixed(3)}, ${s.coords[1].toFixed(3)})`).join('; ')}.`
 
-    const systemWithContext = SYSTEM_PROMPT + marktContext + visitedContext
+    const systemWithContext = SYSTEM_PROMPT + marktContext + visitedContext + speeltuinenContext
 
     if (phase === 'suggest') {
       const message = await client.messages.create({
