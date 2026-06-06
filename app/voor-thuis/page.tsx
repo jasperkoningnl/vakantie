@@ -70,9 +70,9 @@ export default async function VoorThuisPage() {
         className="rounded-2xl p-3 mb-5"
         style={{ background: '#FFF6D8', border: '1px solid #E6C76A', color: '#6B4E16' }}
       >
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1">Privépagina</p>
+        <p className="text-xs font-semibold uppercase tracking-widest mb-1">Voor familie &amp; vrienden</p>
         <p className="text-sm">
-          Deze thuisblijverspagina is bedoeld voor genodigden na inloggen. Deel de URL niet publiek en plaats hem niet op sociale media.
+          Welkom! Hier vind je onze route, overnachtingen en een live reisupdate. Deel de link alleen met mensen die je kent.
         </p>
       </section>
 

@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop } from '@/lib/types'
+import { useSession, signIn } from 'next-auth/react'
+import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop, PhotoMeta } from '@/lib/types'
 import { uitjes, Uitje } from '@/lib/uitjes'
-import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
+import { reiskalender, Reisdag, VerblijfDay, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
 import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
 
@@ -145,12 +146,15 @@ export default function VandaagPage() {
   const [sluitSaving, setSluitSaving] = useState(false)
   const [sluitDone, setSluitDone] = useState(false)
   const [infoUitjeId, setInfoUitjeId] = useState<string | null>(null)
+  const [previewDate, setPreviewDate] = useState<string | null>(null)
+  const [showPreviewPicker, setShowPreviewPicker] = useState(false)
 
   const today = getTodayDateStr()
   const tomorrow = getTomorrowDateStr()
   const todayEntry = reiskalender[today] ?? null
   const tomorrowEntry = reiskalender[tomorrow] ?? null
-  const isReisdag = todayEntry?.type === 'reisdag'
+  const activeEntry = previewDate ? (reiskalender[previewDate] ?? null) : todayEntry
+  const isReisdag = activeEntry?.type === 'reisdag'
   const after17 = isAfter17Paris()
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
@@ -254,14 +258,19 @@ export default function VandaagPage() {
     }
   }
 
-  const handleSluitAf = async () => {
+  const handleSluitAf = async (selectedPhotos: PhotoMeta[]) => {
     setSluitSaving(true)
     const actualText = followedPlan === false ? sluitActualText : 'We hebben het plan gevolgd.'
     try {
       await fetch('/api/diary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: today, actual_text: actualText, mood_emoji: sluitMoodEmoji }),
+        body: JSON.stringify({
+          date: today,
+          actual_text: actualText,
+          mood_emoji: sluitMoodEmoji,
+          ...(selectedPhotos.length > 0 && { photos: selectedPhotos }),
+        }),
       })
       setSluitDone(true)
       setShowSluitAf(false)
@@ -325,11 +334,48 @@ export default function VandaagPage() {
 
   return (
     <div className="px-4 pt-5 pb-28">
-      <div className="mb-4">
-        <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
-          Notre Voyage
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
+            Notre Voyage
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
         </div>
-        <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
+        <div className="relative">
+          <button
+            onClick={() => setShowPreviewPicker(v => !v)}
+            className="text-[10px] rounded-full px-2.5 py-1 mt-1"
+            style={{ background: previewDate ? 'oklch(93% 0.05 40)' : '#F0E9DA', color: previewDate ? 'oklch(40% 0.12 40)' : '#A8937A', border: previewDate ? '1px solid oklch(57% 0.14 40 / 0.3)' : 'none' }}
+          >
+            🧪 Preview
+          </button>
+          {showPreviewPicker && (
+            <div className="absolute right-0 top-9 z-40 rounded-2xl shadow-lg p-3" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8', minWidth: 220 }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#A8937A' }}>Preview reisdag</p>
+              <div className="flex flex-col gap-1.5">
+                {(Object.entries(reiskalender) as [string, KalenderEntry][]).filter(([, v]) => v.type === 'reisdag').map(([d, entry]) => (
+                  <button
+                    key={d}
+                    onClick={() => { setPreviewDate(previewDate === d ? null : d); setShowPreviewPicker(false) }}
+                    className="text-left rounded-xl px-3 py-2 text-xs font-semibold"
+                    style={{ background: previewDate === d ? 'oklch(93% 0.05 40)' : '#F5EFE3', color: previewDate === d ? 'oklch(40% 0.12 40)' : '#2C2316', border: previewDate === d ? '1px solid oklch(57% 0.14 40 / 0.3)' : '1px solid transparent' }}
+                  >
+                    {d} — {(entry as Reisdag).label}
+                  </button>
+                ))}
+                {previewDate && (
+                  <button
+                    onClick={() => { setPreviewDate(null); setShowPreviewPicker(false) }}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold mt-1"
+                    style={{ background: '#FEF2F2', color: '#EF4444' }}
+                  >
+                    ✕ Sluit preview
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <WeatherCard weather={weather} />
@@ -352,14 +398,14 @@ export default function VandaagPage() {
         </div>
       )}
 
-      {todayEntry?.type === 'reisdag' && (
-        <ReisDagView entry={todayEntry} userLocation={userLocation} />
+      {activeEntry?.type === 'reisdag' && (
+        <ReisDagView entry={activeEntry as Reisdag} userLocation={userLocation} />
       )}
 
-      {todayEntry?.type === 'verblijf' && (
+      {activeEntry?.type === 'verblijf' && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.3)' }}>
           <p className="text-sm font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
-            📍 {todayEntry.verblijf} — {todayEntry.label}
+            📍 {(activeEntry as VerblijfDay).verblijf} — {(activeEntry as VerblijfDay).label}
           </p>
         </div>
       )}
@@ -431,6 +477,7 @@ export default function VandaagPage() {
               />
               {showSluitAf && (
                 <SluitDagAfModal
+                  date={today}
                   followedPlan={followedPlan}
                   setFollowedPlan={setFollowedPlan}
                   actualText={sluitActualText}
@@ -1437,12 +1484,37 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
   )
 }
 
-function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualText, moodEmoji, setMoodEmoji, saving, onSave, onClose }: {
-  followedPlan: boolean | null; setFollowedPlan: (v: boolean) => void; actualText: string; setActualText: (v: string) => void
-  moodEmoji: string | null; setMoodEmoji: (v: string) => void; saving: boolean; onSave: () => void; onClose: () => void
+function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setActualText, moodEmoji, setMoodEmoji, saving, onSave, onClose }: {
+  date: string; followedPlan: boolean | null; setFollowedPlan: (v: boolean) => void; actualText: string; setActualText: (v: string) => void
+  moodEmoji: string | null; setMoodEmoji: (v: string) => void; saving: boolean; onSave: (photos: PhotoMeta[]) => void; onClose: () => void
 }) {
+  const { data: session } = useSession()
   const [story, setStory] = useState<string | null>(null)
   const [storyLoading, setStoryLoading] = useState(false)
+  const [photos, setPhotos] = useState<PhotoMeta[]>([])
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([])
+  const [photosLoading, setPhotosLoading] = useState(false)
+
+  useEffect(() => {
+    if (!session?.accessToken) return
+    setPhotosLoading(true)
+    fetch(`/api/photos?date=${date}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setPhotos(data)
+          setSelectedPhotoIds(data.map((p: PhotoMeta) => p.id))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPhotosLoading(false))
+  }, [session?.accessToken, date])
+
+  const togglePhoto = (id: string) => {
+    setSelectedPhotoIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(p.id))
 
   const generateStory = async () => {
     setStoryLoading(true)
@@ -1450,7 +1522,7 @@ function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualT
       const res = await fetch('/api/diary-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: getParisDateString(), actual_text: actualText || 'We hebben een mooie dag gehad.' }),
+        body: JSON.stringify({ date, actual_text: actualText || 'We hebben een mooie dag gehad.', photos: selectedPhotos }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -1459,8 +1531,6 @@ function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualT
     } catch { /* ignore */ }
     setStoryLoading(false)
   }
-
-  const photoColors = ['#C4956A', '#7AACCE', '#9BB870', '#D4B84A']
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#F5EFE3' }}>
@@ -1487,21 +1557,50 @@ function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualT
           ))}
         </div>
 
-        {/* Photo strip */}
+        {/* Google Photos */}
         <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Foto's van vandaag</p>
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-5" style={{ scrollbarWidth: 'none' }}>
-          {photoColors.map((color, i) => (
-            <div key={i} className="flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden relative" style={{ background: color }}>
-              <svg width="80" height="80" viewBox="0 0 80 80" className="absolute inset-0 opacity-20">
-                {[0,1,2,3].map(j => <line key={j} x1={0} y1={j*22} x2={80} y2={j*22+80} stroke="white" strokeWidth="8"/>)}
-              </svg>
+        {!session?.accessToken ? (
+          <div className="rounded-2xl p-4 mb-5 flex items-center gap-3" style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}>
+            <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: '#2C2316' }}>Koppel Google Photos</p>
+              <p className="text-xs text-on-surface-variant">Verbind je account om foto's van vandaag te zien.</p>
             </div>
-          ))}
-          <div className="flex-shrink-0 w-20 h-20 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer" style={{ border: '2px dashed #E4D9C8' }}>
-            <span className="material-symbols-outlined text-xl" style={{ color: '#A8937A' }}>add_a_photo</span>
-            <span className="text-[9px]" style={{ color: '#A8937A' }}>Toevoegen</span>
+            <button
+              onClick={() => signIn('google', { callbackUrl: '/vandaag' }, { access_type: 'offline', prompt: 'consent' })}
+              className="text-xs font-semibold rounded-full px-3 py-1.5 flex-shrink-0"
+              style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
+            >
+              Verbinden
+            </button>
           </div>
-        </div>
+        ) : photosLoading ? (
+          <div className="flex items-center gap-2 text-xs text-on-surface-variant mb-5 py-1">
+            <span className="material-symbols-outlined text-base animate-spin">refresh</span>
+            Foto's laden…
+          </div>
+        ) : photos.length === 0 ? (
+          <p className="text-xs text-on-surface-variant mb-5">Geen foto's gevonden voor vandaag.</p>
+        ) : (
+          <div className="mb-5">
+            <p className="text-xs text-on-surface-variant mb-2">{selectedPhotoIds.length}/{photos.length} geselecteerd</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {photos.map(p => {
+                const isSelected = selectedPhotoIds.includes(p.id)
+                return (
+                  <button key={p.id} onClick={() => togglePhoto(p.id)} className="relative aspect-square rounded-xl overflow-hidden">
+                    <img src={`${p.baseUrl}=w200-h200-c`} alt={p.filename} className="w-full h-full object-cover" style={{ opacity: isSelected ? 1 : 0.35 }} />
+                    {isSelected && (
+                      <div className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'oklch(57% 0.14 40)' }}>
+                        <span className="material-symbols-outlined text-white" style={{ fontSize: '12px' }}>check</span>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Followed plan? */}
         <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Hebben jullie het plan gevolgd?</p>
@@ -1546,7 +1645,7 @@ function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualT
 
       {/* Save button */}
       <div className="absolute bottom-0 inset-x-0 px-5 pb-10 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 70%, transparent)' }}>
-        <button onClick={onSave} disabled={saving || followedPlan === null} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
+        <button onClick={() => onSave(selectedPhotos)} disabled={saving || followedPlan === null} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
           style={{ background: 'oklch(57% 0.14 40)', boxShadow: '0 4px 16px oklch(57% 0.14 40 / 0.35)' }}>
           {saving
             ? <><span className="material-symbols-outlined text-base animate-spin">refresh</span>Opslaan…</>
