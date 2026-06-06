@@ -21,7 +21,16 @@ export default function DagboekPage() {
   const { data: session } = useSession()
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({})
   const [photos, setPhotos] = useState<Record<string, PhotoMeta[]>>({})
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Record<string, string[]>>({})
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Record<string, string[]>>(() => {
+    if (typeof window === 'undefined') return {}
+
+    try {
+      const saved = localStorage.getItem('dagboek_selected_photos')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
@@ -29,6 +38,7 @@ export default function DagboekPage() {
   const [reisverhaal, setReisverhaal] = useState<string | null>(null)
   const [generatingVerhaal, setGeneratingVerhaal] = useState(false)
   const [showVerhaal, setShowVerhaal] = useState(false)
+  const [photosAuthError, setPhotosAuthError] = useState(false)
 
   useEffect(() => {
     fetch('/api/diary')
@@ -39,14 +49,17 @@ export default function DagboekPage() {
         setEntries(map)
       })
       .catch(() => {})
-
-    try {
-      const saved = localStorage.getItem('dagboek_selected_photos')
-      if (saved) setSelectedPhotoIds(JSON.parse(saved))
-    } catch {}
   }, [])
 
   const filledEntries = Object.values(entries).filter(e => e.actual_text || e.mood_emoji)
+
+  const reconnectGooglePhotos = () => {
+    signIn(
+      'google',
+      { callbackUrl: '/dagboek' },
+      { prompt: 'consent', access_type: 'offline', response_type: 'code' },
+    )
+  }
 
   const loadPhotos = async (date: string) => {
     if (photos[date] !== undefined || !session?.accessToken) return
@@ -55,8 +68,12 @@ export default function DagboekPage() {
       const res = await fetch(`/api/photos?date=${date}`)
       if (res.ok) {
         const data = await res.json()
+        setPhotosAuthError(false)
         setPhotos(prev => ({ ...prev, [date]: data }))
       } else {
+        if (res.status === 401) {
+          setPhotosAuthError(true)
+        }
         setPhotos(prev => ({ ...prev, [date]: [] }))
       }
     } catch {
@@ -200,7 +217,7 @@ export default function DagboekPage() {
       </div>
 
       {/* Google Photos connected */}
-      {session && (
+      {session?.accessToken && !photosAuthError && (
         <div
           className="rounded-2xl p-3 mb-4 flex items-center gap-3"
           style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
@@ -209,6 +226,32 @@ export default function DagboekPage() {
           <div>
             <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Google Photos gekoppeld</p>
             <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om de foto&apos;s van die dag te zien.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Google Photos reconnect */}
+      {session && (!session.accessToken || photosAuthError) && (
+        <div
+          className="rounded-2xl p-4 mb-5"
+          style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}
+        >
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-3xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>sync_problem</span>
+            <div className="flex-1">
+              <p className="font-semibold text-on-surface">Google Photos opnieuw verbinden</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Je Google Photos toegang is verlopen of mist. Verbind opnieuw om foto&apos;s bij je dagboek te laden.
+              </p>
+              <button
+                onClick={reconnectGooglePhotos}
+                className="mt-3 rounded-full text-white text-sm font-semibold px-4 py-2 flex items-center gap-2"
+                style={{ background: 'oklch(57% 0.14 40)' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>sync</span>
+                Opnieuw verbinden met Google Photos
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -227,7 +270,7 @@ export default function DagboekPage() {
                 Koppel je Google account om foto&apos;s van de dag automatisch te zien bij elke dagboekkaart.
               </p>
               <button
-                onClick={() => signIn('google', { callbackUrl: '/dagboek' })}
+                onClick={reconnectGooglePhotos}
                 className="mt-3 rounded-full text-white text-sm font-semibold px-4 py-2 flex items-center gap-2"
                 style={{ background: 'oklch(65% 0.10 218)' }}
               >
@@ -301,7 +344,7 @@ export default function DagboekPage() {
               {isExpanded && (
                 <div className="px-4 pb-4" style={{ borderTop: '1px solid #E4D9C8' }}>
                   {/* Photo grid met selectie */}
-                  {session && (
+                  {session?.accessToken && !photosAuthError && (
                     <div className="mt-3 mb-3">
                       {loadingPhotos === date ? (
                         <div className="flex items-center gap-2 text-xs text-on-surface-variant py-1">
