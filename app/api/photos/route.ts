@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
+import { requirePrivateAccess } from '@/lib/api-auth'
 
 export async function GET(req: NextRequest) {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   const session = await auth()
   if (!session?.accessToken) {
     return NextResponse.json(

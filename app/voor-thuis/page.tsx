@@ -1,7 +1,8 @@
-export const dynamic = 'force-dynamic'
-
+import { requirePrivatePageAccess } from '@/lib/private-page-auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { SafeArrival } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
 
 async function getLatestArrival(): Promise<SafeArrival | null> {
   try {
@@ -35,6 +36,8 @@ const STEP_COLORS = [
 ]
 
 export default async function VoorThuisPage() {
+  await requirePrivatePageAccess('/voor-thuis')
+
   const arrival = await getLatestArrival()
 
   const formatTs = (ts: string) => {
@@ -65,6 +68,16 @@ export default async function VoorThuisPage() {
           Voor de thuisblijvers
         </h1>
       </div>
+
+      <section
+        className="rounded-2xl p-3 mb-5"
+        style={{ background: '#FFF6D8', border: '1px solid #E6C76A', color: '#6B4E16' }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-widest mb-1">Privépagina</p>
+        <p className="text-sm">
+          Deze thuisblijverspagina is bedoeld voor genodigden na inloggen. Deel de URL niet publiek en plaats hem niet op sociale media.
+        </p>
+      </section>
 
       {/* Aankomststatus hero */}
       <div

@@ -1,8 +1,9 @@
-const CACHE_PAGES = 'pages-v1';
-const CACHE_STATIC = 'static-v1';
-const CACHE_EXTERNAL = 'external-v1';
+const CACHE_PAGES = 'pages-v2';
+const CACHE_STATIC = 'static-v2';
+const CACHE_EXTERNAL = 'external-v2';
 
-const PRECACHE_URLS = ['/', '/medisch', '/route', '/voor-thuis', '/vandaag'];
+const PROTECTED_PATHS = ['/medisch', '/voor-thuis', '/api/'];
+const PRECACHE_URLS = ['/', '/nood', '/route', '/vandaag'];
 
 // ---------------------------------------------------------------------------
 // Install – pre-cache shell pages, skip waiting immediately
@@ -24,17 +25,20 @@ self.addEventListener('install', (event) => {
 });
 
 // ---------------------------------------------------------------------------
-// Activate – delete any cache whose name does NOT end with '-v1'
+// Activate – delete old cache versions and any previously cached private pages
 // ---------------------------------------------------------------------------
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => !key.endsWith('-v1'))
+          .filter((key) => !key.endsWith('-v2'))
           .map((key) => caches.delete(key))
       )
-    ).then(() => self.clients.claim())
+    )
+      .then(() => caches.open(CACHE_PAGES))
+      .then((cache) => Promise.all(PROTECTED_PATHS.map((path) => cache.delete(path))))
+      .then(() => self.clients.claim())
   );
 });
 
@@ -65,13 +69,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. API routes – network-first, only cache GET, fallback to cache
+  // 3. API routes – network-only for private data; never cache authenticated responses
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirstApi(request));
+    event.respondWith(networkOnlyApi(request));
     return;
   }
 
-  // 4. Navigation requests – network-first, cache response, fallback chain
+  // 4. Navigation requests – network-first. Protected pages are not cached.
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstNavigate(request));
     return;
@@ -106,25 +110,18 @@ async function networkFirstExternal(request) {
       cache.put(request, response.clone());
     }
     return response;
-  } catch (_) {
+  } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
     return new Response('Service unavailable', { status: 503 });
   }
 }
 
-/** Network-first for /api/ routes; only cache GET responses. */
-async function networkFirstApi(request) {
+/** Network-only for /api/ routes to avoid storing private authenticated data. */
+async function networkOnlyApi(request) {
   try {
-    const response = await fetch(request);
-    if (request.method === 'GET' && response.ok) {
-      const cache = await caches.open(CACHE_PAGES);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (_) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
+    return await fetch(request);
+  } catch {
     return new Response(JSON.stringify({ error: 'offline' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },
@@ -136,12 +133,12 @@ async function networkFirstApi(request) {
 async function networkFirstNavigate(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (response.ok && !isProtectedNavigation(request)) {
       const cache = await caches.open(CACHE_PAGES);
       cache.put(request, response.clone());
     }
     return response;
-  } catch (_) {
+  } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
     const root = await caches.match('/');
@@ -155,9 +152,14 @@ async function networkFirstGeneric(request) {
   try {
     const response = await fetch(request);
     return response;
-  } catch (_) {
+  } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
     return new Response('Offline', { status: 503 });
   }
+}
+
+function isProtectedNavigation(request) {
+  const url = new URL(request.url);
+  return PROTECTED_PATHS.some((path) => url.pathname === path || url.pathname.startsWith(`${path}/`));
 }
