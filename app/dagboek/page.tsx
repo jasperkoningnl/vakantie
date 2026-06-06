@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { DiaryEntry, PhotoMeta } from '@/lib/types'
 
@@ -17,37 +17,77 @@ const VACATION_DAYS: string[] = Array.from({ length: 15 }, (_, i) => {
   return d.toISOString().split('T')[0]
 })
 
-type PlanStop = {
-  name?: unknown
+type SaveStatus = 'unsaved' | 'saving' | 'saved' | 'failed'
+
+type DaySaveState = {
+  status: SaveStatus
+  revision: number
+  error?: string
 }
 
-function formatPlanText(planText?: string): string {
+const SAVE_STATUS_LABELS: Record<SaveStatus, string> = {
+  unsaved: 'Niet opgeslagen',
+  saving: 'Opslaan…',
+  saved: 'Opgeslagen',
+  failed: 'Opslaan mislukt',
+}
+
+const formatPlanText = (planText?: string) => {
   if (!planText) return 'Geen plan gemaakt.'
 
-  const trimmedPlanText = planText.trim()
-  if (!trimmedPlanText.startsWith('{')) return planText
+  if (!planText.startsWith('{')) return planText
 
   try {
-    const parsed = JSON.parse(trimmedPlanText) as { stops?: PlanStop[] }
-    const stopNames = parsed.stops
-      ?.map(stop => stop.name)
-      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    const parsed: unknown = JSON.parse(planText)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'stops' in parsed &&
+      Array.isArray(parsed.stops)
+    ) {
+      const stopNames = parsed.stops
+        .map(stop => (
+          stop &&
+          typeof stop === 'object' &&
+          'name' in stop &&
+          typeof stop.name === 'string'
+            ? stop.name
+            : null
+        ))
+        .filter((name): name is string => Boolean(name))
 
-    return stopNames?.length ? stopNames.join(' → ') : 'Plan opgeslagen, maar niet leesbaar'
+      if (stopNames.length > 0) return stopNames.join(' → ')
+    }
   } catch {
-    return 'Plan opgeslagen, maar niet leesbaar'
+    // Toon de originele tekst als het opgeslagen plan geen geldige JSON is.
   }
+
+  return planText
 }
 
-function readSelectedPhotoIds(): Record<string, string[]> {
-  if (typeof window === 'undefined') return {}
-
+const getResponseError = async (res: Response, fallback: string) => {
   try {
-    const saved = localStorage.getItem('dagboek_selected_photos')
-    return saved ? JSON.parse(saved) : {}
+    const contentType = res.headers.get('content-type')
+    if (contentType?.includes('application/json')) {
+      const data: unknown = await res.json()
+      if (
+        data &&
+        typeof data === 'object' &&
+        'error' in data &&
+        typeof data.error === 'string' &&
+        data.error.trim()
+      ) {
+        return data.error
+      }
+    } else {
+      const text = await res.text()
+      if (text.trim()) return text
+    }
   } catch {
-    return {}
+    // Gebruik de fallback als de foutresponse niet leesbaar is.
   }
+
+  return fallback
 }
 
 export default function DagboekPage() {
@@ -65,7 +105,9 @@ export default function DagboekPage() {
     }
   })
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
-  const [saving, setSaving] = useState<string | null>(null)
+  const [saveStates, setSaveStates] = useState<Record<string, DaySaveState>>({})
+  const saveRevisionsRef = useRef<Record<string, number>>({})
+  const [diaryLoadError, setDiaryLoadError] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
   const [loadingPhotos, setLoadingPhotos] = useState<string | null>(null)
   const [reisverhaal, setReisverhaal] = useState<string | null>(null)
@@ -74,14 +116,34 @@ export default function DagboekPage() {
   const [photosAuthError, setPhotosAuthError] = useState(false)
 
   useEffect(() => {
-    fetch('/api/diary')
-      .then(r => r.json())
-      .then((data: DiaryEntry[]) => {
+    const loadDiary = async () => {
+      try {
+        const res = await fetch('/api/diary')
+        if (!res.ok) {
+          throw new Error(await getResponseError(res, 'Dagboek laden mislukt.'))
+        }
+
+        const data: DiaryEntry[] = await res.json()
         const map: Record<string, DiaryEntry> = {}
         data.forEach(e => { map[e.date] = e })
+        const loadedSaveStates = Object.fromEntries(
+          data.map(e => [e.date, { status: 'saved' as const, revision: 0 }])
+        )
         setEntries(map)
-      })
-      .catch(() => {})
+        saveRevisionsRef.current = Object.fromEntries(data.map(e => [e.date, 0]))
+        setSaveStates(loadedSaveStates)
+        setDiaryLoadError(null)
+      } catch (error) {
+        setDiaryLoadError(error instanceof Error ? error.message : 'Dagboek laden mislukt.')
+      }
+    }
+
+    loadDiary()
+
+    try {
+      const saved = localStorage.getItem('dagboek_selected_photos')
+      if (saved) setSelectedPhotoIds(JSON.parse(saved))
+    } catch {}
   }, [])
 
   const filledEntries = Object.values(entries).filter(e => e.actual_text || e.mood_emoji)
@@ -125,20 +187,50 @@ export default function DagboekPage() {
     }
   }
 
-  const saveEntry = async (date: string, updates: Partial<DiaryEntry>) => {
-    setSaving(date)
-    const current = entries[date] || { date }
-    const merged = { ...current, ...updates }
-    const res = await fetch('/api/diary', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(merged),
-    })
-    if (res.ok) {
-      const saved = await res.json()
+  const updateEntry = (date: string, updates: Partial<DiaryEntry>) => {
+    const nextRevision = (saveRevisionsRef.current[date] ?? 0) + 1
+    saveRevisionsRef.current = { ...saveRevisionsRef.current, [date]: nextRevision }
+
+    setEntries(prev => ({
+      ...prev,
+      [date]: { ...(prev[date] || { date }), ...updates },
+    }))
+    setSaveStates(prev => ({ ...prev, [date]: { status: 'unsaved', revision: nextRevision } }))
+  }
+
+  const saveEntry = async (date: string) => {
+    const entry = entries[date] || { date }
+    const saveRevision = saveRevisionsRef.current[date] ?? 0
+    setSaveStates(prev => ({ ...prev, [date]: { status: 'saving', revision: saveRevision } }))
+
+    try {
+      const res = await fetch('/api/diary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      })
+
+      if (!res.ok) {
+        throw new Error(await getResponseError(res, 'Opslaan mislukt.'))
+      }
+
+      const saved: DiaryEntry = await res.json()
+      if ((saveRevisionsRef.current[date] ?? 0) !== saveRevision) return
+
       setEntries(prev => ({ ...prev, [date]: saved }))
+      setSaveStates(prev => ({ ...prev, [date]: { status: 'saved', revision: saveRevision } }))
+    } catch (error) {
+      if ((saveRevisionsRef.current[date] ?? 0) !== saveRevision) return
+
+      setSaveStates(prev => ({
+        ...prev,
+        [date]: {
+          status: 'failed',
+          revision: saveRevision,
+          error: error instanceof Error ? error.message : 'Opslaan mislukt.',
+        },
+      }))
     }
-    setSaving(null)
   }
 
   const togglePhotoSelection = (date: string, photoId: string, allPhotoIds: string[]) => {
@@ -249,6 +341,15 @@ export default function DagboekPage() {
         </h1>
       </div>
 
+      {diaryLoadError && (
+        <div
+          className="rounded-2xl p-3 mb-4 text-sm"
+          style={{ background: 'oklch(95% 0.04 25)', border: '1px solid oklch(65% 0.12 25 / 0.35)', color: 'oklch(40% 0.12 25)' }}
+        >
+          Serverfout bij laden: {diaryLoadError}
+        </div>
+      )}
+
       {/* Google Photos connected */}
       {session?.accessToken && !photosAuthError && (
         <div
@@ -340,6 +441,9 @@ export default function DagboekPage() {
       <div className="flex flex-col gap-3">
         {VACATION_DAYS.map(date => {
           const entry = entries[date] || { date }
+          const saveState = saveStates[date]
+          const saveStatus = saveState?.status ?? (entries[date] ? 'saved' : 'unsaved')
+          const isSaving = saveStatus === 'saving'
           const isExpanded = expandedDay === date
           const dayPhotos = photos[date] || []
           const dateObj = new Date(date + 'T12:00:00')
@@ -365,6 +469,12 @@ export default function DagboekPage() {
                   <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-2">
                     {entry.mood_emoji && <span>{entry.mood_emoji}</span>}
                     {hasContent ? 'Ingevuld' : 'Nog niet ingevuld'}
+                  </p>
+                  <p
+                    className="text-[10px] font-semibold mt-1"
+                    style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'unsaved' ? 'oklch(57% 0.14 40)' : '#A8937A' }}
+                  >
+                    {SAVE_STATUS_LABELS[saveStatus]}
                   </p>
                 </div>
                 <span
@@ -468,8 +578,7 @@ export default function DagboekPage() {
                     </div>
                     <textarea
                       value={entry.actual_text || ''}
-                      onChange={e => setEntries(prev => ({ ...prev, [date]: { ...entry, actual_text: e.target.value } }))}
-                      onBlur={() => saveEntry(date, { actual_text: entry.actual_text })}
+                      onChange={e => updateEntry(date, { actual_text: e.target.value })}
                       placeholder="Schrijf wat jullie echt hebben gedaan…"
                       rows={3}
                       className="w-full mt-1 rounded-xl p-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 resize-none focus:outline-none"
@@ -491,7 +600,7 @@ export default function DagboekPage() {
                       {MOODS.map(m => (
                         <button
                           key={m.emoji}
-                          onClick={() => saveEntry(date, { mood_emoji: m.emoji })}
+                          onClick={() => updateEntry(date, { mood_emoji: m.emoji })}
                           className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2.5 transition-all"
                           style={
                             entry.mood_emoji === m.emoji
@@ -549,6 +658,32 @@ export default function DagboekPage() {
                     </div>
                   )}
 
+                  <div className="mb-3 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.55)', border: '1px solid #E4D9C8' }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p
+                          className="text-xs font-semibold"
+                          style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'unsaved' ? 'oklch(57% 0.14 40)' : '#6B5A3E' }}
+                        >
+                          {SAVE_STATUS_LABELS[saveStatus]}
+                        </p>
+                        {saveState?.error && (
+                          <p className="text-[11px] mt-1" style={{ color: 'oklch(50% 0.15 25)' }}>
+                            Serverfout: {saveState.error}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => saveEntry(date)}
+                        disabled={isSaving || saveStatus === 'saved'}
+                        className="rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ background: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : 'oklch(57% 0.14 40)', color: 'white' }}
+                      >
+                        {saveStatus === 'failed' ? 'Opnieuw proberen' : isSaving ? 'Opslaan…' : 'Opslaan'}
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => generateStory(date)}
@@ -568,9 +703,6 @@ export default function DagboekPage() {
                         </>
                       )}
                     </button>
-                    {saving === date && (
-                      <span className="text-xs text-on-surface-variant flex items-center">Opslaan…</span>
-                    )}
                   </div>
                 </div>
               )}
