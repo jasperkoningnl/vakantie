@@ -5,7 +5,7 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
-const HOME_COORDS: [number, number] = [44.3982, 1.1189]
+const HOME_COORDS: [number, number] = [44.398, 1.119]
 
 function haversineKm(a: [number, number], b: [number, number]): number {
   const R = 6371
@@ -32,7 +32,7 @@ const FILTERS: Filter[] = [
   { label: 'Boodschappen', value: 'shop',    icon: 'shopping_cart' },
 ]
 
-const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14', 'u19', 'u22', 'u23', 'u29', 'u30', 'u31', 'u32']
+const LENA_IDS = ['u1', 'u2', 'u6', 'u14', 'u19', 'u22', 'u23', 'u29', 'u30', 'u31', 'u32']
 
 const TYPE_ICONS: Record<string, string> = {
   entertainment: 'attractions',
@@ -125,10 +125,10 @@ export default function UitjesPage() {
 
   const filtered = uitjes.filter(u => {
     if (filter === 'all' || filter === 'nearby') return true
-    if (filter === 'lena') return LENA_IDS.includes(u.id)
+    if (filter === 'lena') return !!u.lena
     if (filter === 'nature') return u.type === 'nature' || u.type === 'entertainment'
-    if (filter === 'food') return u.type === 'food' && !u.marktDag
-    if (filter === 'shop') return u.type === 'shop' || u.type === 'bakery' || !!u.marktDag
+    if (filter === 'food') return u.type === 'food'
+    if (filter === 'shop') return u.type === 'shop' || u.type === 'bakery'
     return u.type === filter
   }).sort((a, b) => {
     if (filter !== 'nearby') return 0

@@ -1,21 +1,21 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop, PhotoMeta } from '@/lib/types'
-import { uitjes, Uitje } from '@/lib/uitjes'
+import { uitjes, Uitje, getTodayMarktdagen, getUitjeById } from '@/lib/uitjes'
 import { reiskalender, Reisdag, VerblijfDay, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
-import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
+import { getParisDateString, isAfterParisHour } from '@/lib/date-utils'
 
-const HOME_COORDS: [number, number] = [44.3982, 1.1189]
+const HOME_COORDS: [number, number] = [44.398, 1.119]
 
 const CATEGORIES = [
-  { label: 'Spelen',       icon: 'child_care',   value: 'lena',    color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => ['u1','u2','u6','u13','u14','u19','u22','u23','u29','u30','u31','u32'].includes(u.id) },
-  { label: 'Cultuur',      icon: 'museum',        value: 'culture', color: 'oklch(57% 0.14 40)',  bg: 'oklch(93% 0.05 40)',  uitjeFilter: (u: Uitje) => u.type === 'culture' },
-  { label: 'Natuur',       icon: 'forest',        value: 'nature',  color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)', uitjeFilter: (u: Uitje) => (u.type === 'entertainment' || u.type === 'nature') && !u.marktDag },
-  { label: 'Eten',         icon: 'restaurant',    value: 'food',    color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)', uitjeFilter: (u: Uitje) => u.type === 'food' && !u.marktDag },
-  { label: 'Bakkers',      icon: 'bakery_dining', value: 'bakery',  color: 'oklch(72% 0.14 60)',  bg: 'oklch(93% 0.05 60)',  uitjeFilter: (u: Uitje) => u.type === 'bakery' },
-  { label: 'Boodschappen', icon: 'shopping_cart', value: 'shop',    color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)', uitjeFilter: (u: Uitje) => u.type === 'shop' || (!!u.marktDag && isTodayMarkt(u)) },
+  { label: 'Iets voor Lena', icon: 'child_care',    value: 'lena',     color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => !!u.lena },
+  { label: 'Kasteel of dorp', icon: 'castle',        value: 'culture',  color: 'oklch(57% 0.14 40)',  bg: 'oklch(93% 0.05 40)',  uitjeFilter: (u: Uitje) => u.type === 'culture' },
+  { label: 'Water of bos',    icon: 'forest',        value: 'nature',   color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)', uitjeFilter: (u: Uitje) => u.type === 'entertainment' || u.type === 'nature' },
+  { label: 'Lekker eten',     icon: 'restaurant',   value: 'food',     color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)', uitjeFilter: (u: Uitje) => u.type === 'food' },
+  { label: 'Boodschappen',    icon: 'shopping_cart', value: 'shop',     color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)', uitjeFilter: (u: Uitje) => u.type === 'shop' },
+  { label: 'Verras ons',      icon: 'auto_awesome',  value: 'surprise', color: 'oklch(68% 0.11 10)',  bg: 'oklch(93% 0.05 10)',  uitjeFilter: (u: Uitje) => u.type !== 'bakery' },
 ]
 
 const MOODS = [
@@ -33,10 +33,6 @@ interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
 function getTodayDateStr() { return getParisDateString() }
 function getTomorrowDateStr() { return getParisDateString(1) }
-function isTodayMarkt(uitje: Uitje): boolean {
-  if (!uitje.marktDag) return false
-  return uitje.marktDag.split(',').map(d => d.trim()).includes(getParisWeekdayName())
-}
 function isAfter17Paris(): boolean { return isAfterParisHour(17) }
 
 function haversineKm(a: [number, number], b: [number, number]): number {
@@ -65,7 +61,7 @@ function getRainWarning(weather: WeatherData | null): string | null {
 
 function buildGoogleMapsUrl(ids: string[]): string {
   const base = `${HOME_COORDS[0]},${HOME_COORDS[1]}`
-  const stops = ids.map(id => uitjes.find(u => u.id === id)).filter(Boolean).map(u => `${u!.coords[0]},${u!.coords[1]}`)
+  const stops = ids.map(id => getUitjeById(id)).filter(Boolean).map(u => `${u!.coords[0]},${u!.coords[1]}`)
   if (stops.length === 0) return `https://www.google.com/maps/search/?api=1&query=Les+Escaliers+Porte-du-Quercy`
   return `https://www.google.com/maps/dir/${base}/${stops.join('/')}/${base}`
 }
@@ -87,7 +83,7 @@ function sortByRoute(stops: Uitje[], destinationId: string): Uitje[] {
 }
 
 function getRouteInfo(stop: Uitje, destinationId: string): { proj: number; perpRatio: number } {
-  const dest = uitjes.find(u => u.id === destinationId)
+  const dest = getUitjeById(destinationId)
   if (!dest) return { proj: 0, perpRatio: 0 }
   const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
   const lenSq = rv[0] ** 2 + rv[1] ** 2
@@ -108,7 +104,7 @@ function getOffRouteLabel(stop: Uitje, destinationId: string | null): string | n
 }
 
 function buildLocalPlan(ids: string[], destinationId: string | null): DayPlan {
-  const stops = ids.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
+  const stops = ids.map(id => getUitjeById(id)).filter(Boolean) as Uitje[]
   const sorted = destinationId ? sortByRoute(stops, destinationId) : stops
   const slots = ['9:30', '11:00', '12:30', '14:30', '16:00']
   const planStops: DayPlanStop[] = sorted.map((u, i) => ({
@@ -161,6 +157,8 @@ export default function VandaagPage() {
   const [previewDate, setPreviewDate] = useState<string | null>(null)
   const [showPreviewPicker, setShowPreviewPicker] = useState(false)
 
+  const allUitjes = useMemo(() => [...uitjes, ...getTodayMarktdagen()], [])
+
   const today = getTodayDateStr()
   const tomorrow = getTomorrowDateStr()
   const todayEntry = reiskalender[today] ?? null
@@ -171,7 +169,7 @@ export default function VandaagPage() {
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.3982&longitude=1.1189&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3')
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.398&longitude=1.119&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3')
       .then(r => r.json()).then(setWeather).catch(() => {})
 
     const saved = localStorage.getItem('dagplan_basket')
@@ -319,7 +317,7 @@ export default function VandaagPage() {
       const usedSlots = new Set(editPlan.stops.map(s => s.time))
       const freeSlots = allSlots.filter(s => !usedSlots.has(s))
       const newStops: DayPlanStop[] = newIds.map((id, i) => {
-        const u = uitjes.find(u => u.id === id)
+        const u = getUitjeById(id)
         return {
           time: freeSlots[i] ?? allSlots[allSlots.length - 1],
           name: u?.name ?? id,
@@ -566,7 +564,7 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   const routeCoords: Record<string, string> = {
     'Amersfoort': '52.155,5.387',
     'Atelier des Sens 89': '47.861,3.562',
-    'Les Escaliers': '44.3982,1.1189',
+    'Les Escaliers': '44.398,1.119',
     'Chartres': '48.447,1.489',
   }
   const fromCoord = routeCoords[entry.van] || ''
@@ -730,7 +728,7 @@ function UitjeSelectCard({
   onOpenInfo: (id: string) => void
   catColor: string
 }) {
-  const isMarktVandaag = isTodayMarkt(uitje)
+  const isMarktVandaag = uitje.id.startsWith('markt-')
   const offRouteLabel = hasDestination && !isDestination ? getOffRouteLabel(uitje, mainDestinationId) : null
 
   return (
@@ -885,16 +883,16 @@ function SelectPhase({
 }) {
   const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES[0]
   const baseCoords = getTodayBaseCoords()
-  const destination = mainDestinationId ? uitjes.find(u => u.id === mainDestinationId) : null
+  const destination = mainDestinationId ? getUitjeById(mainDestinationId) : null
 
-  const rawCatUitjes = uitjes
+  const rawCatUitjes = [...uitjes, ...getTodayMarktdagen()]
     .filter(activeCat.uitjeFilter)
     .filter(u => haversineKm(u.coords, baseCoords) <= 150)
 
   // When destination is set: on-route items first (ascending proj), off-route last
   const catUitjes = mainDestinationId
     ? (() => {
-        const dest = uitjes.find(u => u.id === mainDestinationId)
+        const dest = getUitjeById(mainDestinationId)
         if (!dest) return rawCatUitjes
         const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
         const lenSq = rv[0] ** 2 + rv[1] ** 2
@@ -967,8 +965,9 @@ function SelectPhase({
       {/* Category grid — 2×3, always fully visible */}
       <div className="grid grid-cols-3 gap-2 mb-5">
         {CATEGORIES.map(cat => {
-          const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id) && u.id !== mainDestinationId)
-          const hasMarkt = uitjes.filter(cat.uitjeFilter).some(u => isTodayMarkt(u))
+          const todayMarkten = getTodayMarktdagen()
+          const hasSelection = [...uitjes, ...todayMarkten].filter(cat.uitjeFilter).some(u => basketIds.includes(u.id) && u.id !== mainDestinationId)
+          const hasMarkt = todayMarkten.filter(cat.uitjeFilter).length > 0
           const isActive = activeCatTab === cat.value
           return (
             <button
@@ -1069,7 +1068,7 @@ function ConfirmPhase({
 }) {
   const [destinationId, setDestinationId] = useState<string | null>(mainDestinationId)
 
-  const allStops = basketIds.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
+  const allStops = basketIds.map(id => getUitjeById(id)).filter(Boolean) as Uitje[]
   const sortedStops = destinationId ? sortByRoute(allStops, destinationId) : allStops
   const sortedIds = sortedStops.map(u => u.id)
   const mapsUrl = buildGoogleMapsUrl(sortedIds)
@@ -1112,7 +1111,7 @@ function ConfirmPhase({
                 <button onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }} className="font-semibold text-on-surface text-left hover:underline">{u.name}</button>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-on-surface-variant">🚗 {u.drive}</span>
-                  {isTodayMarkt(u) && <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>Markt!</span>}
+                  {u.id.startsWith('markt-') && <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>Markt!</span>}
                   {isDest && <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>Bestemming</span>}
                   {offRouteLabel && (
                     <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)', color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)' }}>
@@ -1246,7 +1245,7 @@ function DagplanView({
   const now = new Date()
   const currentHour = now.getHours() + now.getMinutes() / 60
   const parseTime = (t: string) => { const [h, m] = t.split(':').map(Number); return h + (m || 0) / 60 }
-  const mainDestination = mainDestinationId ? uitjes.find(u => u.id === mainDestinationId) : null
+  const mainDestination = mainDestinationId ? getUitjeById(mainDestinationId) : null
   const baseCoords = getTodayBaseCoords()
   const totalStops = dayPlan.stops.length
 
@@ -1416,7 +1415,7 @@ function DagplanView({
 }
 
 function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => void }) {
-  const uitje = uitjes.find(u => u.id === uitjeId)
+  const uitje = getUitjeById(uitjeId)
   const [wikiExtract, setWikiExtract] = useState<string | null>(null)
   const [wikiLoading, setWikiLoading] = useState(false)
 
@@ -1706,7 +1705,7 @@ function PlanMorgenSection({ tomorrowEntry, tomorrowPlan, basketIds, onToggleBas
             <div className="mt-4">
               <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Kies uitjes voor morgen</p>
               <div className="flex flex-col gap-3 mb-4">
-                {uitjes.filter(u => !u.marktDag).slice(0, 6).map(u => (
+                {uitjes.filter(u => u.type !== 'bakery').slice(0, 6).map(u => (
                   <MiniUitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={onToggleBasket} />
                 ))}
               </div>

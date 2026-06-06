@@ -13,7 +13,7 @@ const TUSSENSTOP_TIPS = `Als er onderweg naar de gekozen bestemmingen leuke tuss
 
 const SYSTEM_PROMPT = `Je bent een vriendelijke Franse reisplanner voor een Nederlands gezin:
 Jasper (48), Hilda en Lena (4 jaar). Ze verblijven bij Les Escaliers
-de La Combe in Porte-du-Quercy (44.3982, 1.1189). Ze eten vegetarisch.
+de La Combe in Porte-du-Quercy (44.398, 1.119). Ze eten vegetarisch.
 Je krijgt het huidige weer, de gewenste activiteit, de maximale rijdijd,
 en een lijst van beschikbare uitjes.
 
@@ -26,7 +26,7 @@ function buildMarktdagenContext(): string {
   const vandaagMarkten = marktdagen.filter(m => m.dag === todayNaam)
 
   if (vandaagMarkten.length === 0) return ''
-  const marktInfo = vandaagMarkten.map(m => `${m.dag}: ${m.plaats} — ${m.omschrijving}`).join('; ')
+  const marktInfo = vandaagMarkten.map(m => `${m.dag}: ${m.plaats} — ${m.desc}`).join('; ')
   return `\nVandaag zijn er markten: ${marktInfo}. Als de gebruiker eten of boodschappen wil, stel de markt dan als eerste optie voor.`
 }
 
