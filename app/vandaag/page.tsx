@@ -1355,7 +1355,7 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(44,35,22,0.6)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" style={{ background: 'rgba(44,35,22,0.6)' }} onClick={onClose}>
       <div className="w-full max-w-md rounded-t-3xl shadow-2xl overflow-y-auto" style={{ background: '#FAF7F0', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full" style={{ background: '#D4C4B0' }} />
