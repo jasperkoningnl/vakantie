@@ -14,11 +14,11 @@ const HEEN_ROUTE: [number, number][] = [
   [47.077, 2.983],
   [46.562, 2.008],
   [45.148, 1.532],
-  [44.521, 1.150],
+  [44.3982, 1.1189],
 ]
 
 const TERUG_ROUTE: [number, number][] = [
-  [44.521, 1.150],
+  [44.3982, 1.1189],
   [45.833, 1.261],
   [46.557, 1.980],
   [47.906, 1.904],
@@ -30,11 +30,11 @@ const TERUG_ROUTE: [number, number][] = [
 const HEEN_MARKERS = [
   { coords: [52.155, 5.387] as [number, number], label: 'Amersfoort', color: '#1E293B' },
   { coords: [47.861, 3.562] as [number, number], label: 'Atelier des Sens', color: '#4D96FF' },
-  { coords: [44.521, 1.150] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
+  { coords: [44.3982, 1.1189] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
 ]
 
 const TERUG_MARKERS = [
-  { coords: [44.521, 1.150] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
+  { coords: [44.3982, 1.1189] as [number, number], label: 'Les Escaliers', color: '#FF6B6B' },
   { coords: [48.447, 1.489] as [number, number], label: 'Chartres', color: '#4D96FF' },
   { coords: [52.155, 5.387] as [number, number], label: 'Amersfoort', color: '#1E293B' },
 ]

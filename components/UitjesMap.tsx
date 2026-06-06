@@ -14,7 +14,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   bakery: '#F39C12',
 }
 
-const LES_ESCALIERS: [number, number] = [44.521, 1.150]
+const LES_ESCALIERS: [number, number] = [44.3982, 1.1189]
 
 // Distance rings in km (approximate, 1 degree lat ≈ 111 km)
 const RING_MINUTES = [
