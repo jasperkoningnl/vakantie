@@ -183,50 +183,6 @@ export default async function VoorThuisPage() {
         </div>
       </section>
 
-      {/* Medische situatie */}
-      <section className="mb-6">
-        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-          Medisch
-        </div>
-        <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>medical_information</span>
-            <h2 className="font-semibold text-on-surface text-sm">Medische situatie Jasper</h2>
-          </div>
-          <p className="text-sm text-on-surface leading-relaxed">
-            Kaakkyste linksonder, fragiele kaak. Behandelend specialist: Drs. H.G.G.J. Vallen, Meander Amersfoort,{' '}
-            <a href="tel:+31338505050" className="font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>+31 33 850 5050</a>.
-            Bij nood in Frankrijk: CHU Toulouse Purpan, chirurgie maxillo-faciale,{' '}
-            <a href="tel:0561777476" className="font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>05 61 77 74 76</a>.
-          </p>
-        </div>
-      </section>
-
-      {/* Noodoproepen */}
-      <section className="mb-6">
-        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-          Noodoproepen Frankrijk
-        </div>
-        <div className="flex gap-3">
-          {[
-            { emoji: '🚑', number: '112', label: 'Alles',    color: '#C0392B', bg: '#FDECEA' },
-            { emoji: '🏥', number: '15',  label: 'SAMU',     color: '#1A6FA8', bg: '#E8F4FC' },
-            { emoji: '🔥', number: '18',  label: 'Pompiers', color: '#B45309', bg: '#FEF3C7' },
-          ].map(e => (
-            <a
-              key={e.number}
-              href={`tel:${e.number}`}
-              className="flex-1 flex flex-col items-center gap-1 rounded-2xl py-4"
-              style={{ background: e.bg, border: `1.5px solid ${e.color}20` }}
-            >
-              <span className="text-xl">{e.emoji}</span>
-              <span className="text-xl font-black" style={{ color: e.color }}>{e.number}</span>
-              <span className="text-xs text-on-surface-variant">{e.label}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-
       {/* Auto — voor als er iets is */}
       <section className="mb-6">
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>

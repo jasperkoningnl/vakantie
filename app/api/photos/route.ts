@@ -4,7 +4,13 @@ import { auth } from '@/auth'
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.accessToken) {
-    return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 })
+    return NextResponse.json(
+      {
+        error: 'Google Photos moet opnieuw gekoppeld worden.',
+        code: 'GOOGLE_PHOTOS_RECONNECT_REQUIRED',
+      },
+      { status: 401 },
+    )
   }
 
   const date = req.nextUrl.searchParams.get('date')
@@ -41,6 +47,16 @@ export async function GET(req: NextRequest) {
     },
     body: JSON.stringify({ filters, pageSize: 50 }),
   })
+
+  if (res.status === 401 || res.status === 403) {
+    return NextResponse.json(
+      {
+        error: 'Google Photos toegang is verlopen of geweigerd. Verbind opnieuw met Google Photos.',
+        code: 'GOOGLE_PHOTOS_RECONNECT_REQUIRED',
+      },
+      { status: 401 },
+    )
+  }
 
   if (!res.ok) {
     return NextResponse.json({ error: 'Google Photos fout' }, { status: res.status })

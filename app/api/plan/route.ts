@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { uitjes } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
+import { getParisWeekdayName } from '@/lib/date-utils'
 import { speeltuinen } from '@/lib/speeltuinen'
 
 const LENA_DAGRITME = `Houd rekening met Lena's dagritme. Ze is 4 jaar oud. De ochtend (9:00-12:00) is het actieve venster: plan dan de buitenactiviteit of het avontuur. Rond 12:30 lunchen. Tussen 13:00 en 15:00 is een rustig moment (autorit = slaapje in de auto). Vanaf 15:00 een tweede kort venster voor een kalme activiteit. Plan de langste autorit rond 13:30 als dat kan. Eindig de dag niet te laat: uiterlijk 17:30 terug bij Les Escaliers.`
@@ -19,9 +20,7 @@ ${LENA_DAGRITME}
 ${TUSSENSTOP_TIPS}`
 
 function buildMarktdagenContext(): string {
-  const today = new Date().getDay()
-  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
-  const todayNaam = dagNamen[today]
+  const todayNaam = getParisWeekdayName()
   const vandaagMarkten = marktdagen.filter(m => m.dag === todayNaam)
 
   if (vandaagMarkten.length === 0) return ''

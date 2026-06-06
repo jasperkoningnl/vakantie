@@ -5,6 +5,7 @@ import { uitjes, Uitje } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
 import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
+import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
 
 const HOME_COORDS: [number, number] = [44.521, 1.150]
 
@@ -25,40 +26,32 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
-type Phase = 'build' | 'select' | 'confirm' | 'edit' | 'plan'
+type Phase = 'select' | 'confirm' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
 interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
 function getTodayDateStr() {
-  return new Date().toISOString().split('T')[0]
+  return getParisDateString()
 }
 
 function getTomorrowDateStr() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
+  return getParisDateString(1)
 }
 
 function getTodayMarkten() {
-  const today = new Date().getDay()
-  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
-  const todayNaam = dagNamen[today]
+  const todayNaam = getParisWeekdayName()
   return marktdagen.filter(m => m.dag === todayNaam)
 }
 
 function isTodayMarkt(uitje: Uitje): boolean {
   if (!uitje.marktDag) return false
-  const today = new Date().getDay()
-  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
-  const todayNaam = dagNamen[today]
+  const todayNaam = getParisWeekdayName()
   return uitje.marktDag.split(',').map(d => d.trim()).includes(todayNaam)
 }
 
 function isAfter17Paris(): boolean {
-  const now = new Date()
-  const parisHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }))
-  return parisHour >= 17
+  return isAfterParisHour(17)
 }
 
 function haversineKm(a: [number, number], b: [number, number]): number {
@@ -70,7 +63,7 @@ function haversineKm(a: [number, number], b: [number, number]): number {
 }
 
 function getTodayBaseCoords(): [number, number] | null {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getParisDateString()
   const entry = reiskalender[today]
   if (!entry) return null
   if (entry.type === 'vakantie' || entry.type === 'verblijf') return entry.coords
@@ -144,12 +137,14 @@ async function getVisitedNames(): Promise<string[]> {
 
 export default function VandaagPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
-  const [phase, setPhase] = useState<Phase>('build')
+  const [phase, setPhase] = useState<Phase>('select')
   const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [basketIds, setBasketIds] = useState<string[]>([])
-  const [activeCatTab, setActiveCatTab] = useState<string>('')
+  const [activeCatTab, setActiveCatTab] = useState<string>(CATEGORIES[0].value)
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null)
   const [editPlan, setEditPlan] = useState<DayPlan | null>(null)
+  const [addStopMode, setAddStopMode] = useState(false)
+  const [basketSnapshot, setBasketSnapshot] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showTomorrowWizard, setShowTomorrowWizard] = useState(false)
   const [tomorrowBasketIds, setTomorrowBasketIds] = useState<string[]>([])
@@ -242,7 +237,7 @@ export default function VandaagPage() {
   }
 
   const goToSelect = () => {
-    setActiveCatTab(selectedCats[0] || '')
+    setActiveCatTab(selectedCats[0] || CATEGORIES[0].value)
     setPhase('select')
   }
 
@@ -298,15 +293,54 @@ export default function VandaagPage() {
   }
 
   const reset = () => {
-    setPhase('build')
+    setPhase('select')
     setSelectedCats([])
     setBasketIds([])
+    setActiveCatTab(CATEGORIES[0].value)
     setDayPlan(null)
     setEditPlan(null)
+    setAddStopMode(false)
+    setBasketSnapshot([])
     setError(null)
     setShowSluitAf(false)
     localStorage.removeItem('dagplan_basket')
   }
+
+  const handleAddStop = () => {
+    setBasketSnapshot(basketIds)
+    setAddStopMode(true)
+    setActiveCatTab(CATEGORIES[0].value)
+    setPhase('select')
+  }
+
+  const handleAddStopReturn = () => {
+    const newIds = basketIds.filter(id => !basketSnapshot.includes(id))
+    if (newIds.length > 0 && editPlan) {
+      const existingTimes = editPlan.stops.map(s => s.time)
+      const allSlots = ['9:30', '11:00', '12:30', '14:30', '16:00', '17:00']
+      const usedSlots = new Set(existingTimes)
+      const freeSlots = allSlots.filter(s => !usedSlots.has(s))
+      const newStops: DayPlanStop[] = newIds.map((id, i) => {
+        const u = uitjes.find(u => u.id === id)
+        return {
+          time: freeSlots[i] ?? allSlots[allSlots.length - 1],
+          name: u?.name ?? id,
+          description: u?.desc ?? '',
+          mapsUrl: u?.gmaps,
+          coords: u?.coords,
+          isTip: false,
+        }
+      })
+      setEditPlan({ ...editPlan, stops: [...editPlan.stops, ...newStops] })
+    }
+    setAddStopMode(false)
+    setBasketSnapshot([])
+    setPhase('edit')
+  }
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [phase])
 
   const dateStr = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const rainWarning = getRainWarning(weather)
@@ -345,7 +379,7 @@ export default function VandaagPage() {
       )}
 
       {/* Regenmelding */}
-      {rainWarning && phase === 'build' && (
+      {rainWarning && phase === 'select' && (
         <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)' }}>
           <span className="material-symbols-outlined text-base mt-0.5" style={{ color: 'oklch(65% 0.10 218)' }}>water_drop</span>
           <p className="text-sm" style={{ color: '#2C2316' }}>{rainWarning}</p>
@@ -353,7 +387,7 @@ export default function VandaagPage() {
       )}
 
       {/* Marktdag banner */}
-      {vandaagMarkten.length > 0 && (phase === 'build' || phase === 'select') && (
+      {vandaagMarkten.length > 0 && phase === 'select' && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
           <div className="flex items-start gap-2 mb-2">
             <span className="text-xl">🛒</span>
@@ -415,24 +449,15 @@ export default function VandaagPage() {
       {/* Wizard — niet op reisdagen */}
       {!isReisdag && (
         <>
-          {phase === 'build' && (
-            <CategoryBuildPhase
-              selectedCats={selectedCats}
-              onToggleCat={toggleCat}
-              onNext={goToSelect}
-              basketIds={basketIds}
-            />
-          )}
-
           {phase === 'select' && (
             <SelectPhase
-              selectedCats={selectedCats}
               activeCatTab={activeCatTab}
               setActiveCatTab={setActiveCatTab}
               basketIds={basketIds}
               onToggleBasket={toggleBasket}
-              onBack={() => setPhase('build')}
-              onConfirm={() => setPhase('confirm')}
+              addStopMode={addStopMode}
+              onBack={addStopMode ? handleAddStopReturn : undefined}
+              onConfirm={addStopMode ? handleAddStopReturn : () => setPhase('confirm')}
             />
           )}
 
@@ -451,7 +476,7 @@ export default function VandaagPage() {
               onChange={setEditPlan}
               basketIds={basketIds}
               onConfirm={() => handleConfirmPlan(editPlan)}
-              onAddStop={() => setPhase('select')}
+              onAddStop={handleAddStop}
               onReset={reset}
             />
           )}
@@ -485,7 +510,7 @@ export default function VandaagPage() {
       )}
 
       {/* Plan morgen — na 17:00, toon onderaan */}
-      {after17 && !isReisdag && (phase === 'plan' || phase === 'build') && (
+      {after17 && !isReisdag && (phase === 'plan' || phase === 'select') && (
         <PlanMorgenSection
           tomorrowEntry={tomorrowEntry}
           tomorrowPlan={tomorrowPlan}
@@ -872,23 +897,23 @@ function CategoryBuildPhase({
 }
 
 function SelectPhase({
-  selectedCats,
   activeCatTab,
   setActiveCatTab,
   basketIds,
   onToggleBasket,
+  addStopMode,
   onBack,
   onConfirm,
 }: {
-  selectedCats: string[]
   activeCatTab: string
   setActiveCatTab: (v: string) => void
   basketIds: string[]
   onToggleBasket: (id: string) => void
-  onBack: () => void
+  addStopMode: boolean
+  onBack?: () => void
   onConfirm: () => void
 }) {
-  const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES.find(c => c.value === selectedCats[0])!
+  const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES[0]
   const baseCoords = getTodayBaseCoords()
   const catUitjes = uitjes
     .filter(activeCat.uitjeFilter)
@@ -896,55 +921,54 @@ function SelectPhase({
 
   return (
     <div>
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1 text-sm font-semibold mb-4"
-        style={{ color: 'oklch(57% 0.14 40)' }}
-      >
-        <span className="material-symbols-outlined text-base">arrow_back</span>
-        Categorieën
-      </button>
+      {addStopMode && onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-sm font-semibold mb-4"
+          style={{ color: 'oklch(57% 0.14 40)' }}
+        >
+          <span className="material-symbols-outlined text-base">arrow_back</span>
+          Terug naar plan
+        </button>
+      )}
 
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        Kies uitjes
+        {addStopMode ? 'Extra stop toevoegen' : 'Wat willen jullie doen?'}
       </h2>
       <p className="text-xs text-on-surface-variant mb-4">
         {basketIds.length === 0 ? 'Selecteer wat je vandaag wilt doen.' : `${basketIds.length} uitje${basketIds.length > 1 ? 's' : ''} geselecteerd.`}
       </p>
 
-      {/* Categorie tabs */}
-      {selectedCats.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1 mb-5" style={{ scrollbarWidth: 'none' }}>
-          {selectedCats.map(val => {
-            const cat = CATEGORIES.find(c => c.value === val)!
-            const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id))
-            const isActive = activeCatTab === val || (!activeCatTab && val === selectedCats[0])
-            return (
-              <button
-                key={val}
-                onClick={() => setActiveCatTab(val)}
-                className="flex-shrink-0 rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-1.5 transition-all"
-                style={{
-                  background: isActive ? cat.color : '#FAF7F0',
-                  color: isActive ? 'white' : '#6B5A3E',
-                  border: `2px solid ${isActive ? cat.color : '#E4D9C8'}`,
-                }}
-              >
-                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>{cat.icon}</span>
-                {cat.label}
-                {hasSelection && (
-                  <span
-                    className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
-                    style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: 'white' }}
-                  >
-                    ✓
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {/* Categorie tabs — altijd alle 6 */}
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-5" style={{ scrollbarWidth: 'none' }}>
+        {CATEGORIES.map(cat => {
+          const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id))
+          const isActive = activeCatTab === cat.value
+          return (
+            <button
+              key={cat.value}
+              onClick={() => setActiveCatTab(cat.value)}
+              className="flex-shrink-0 rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-1.5 transition-all"
+              style={{
+                background: isActive ? cat.color : '#FAF7F0',
+                color: isActive ? 'white' : '#6B5A3E',
+                border: `2px solid ${isActive ? cat.color : '#E4D9C8'}`,
+              }}
+            >
+              <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>{cat.icon}</span>
+              {cat.label}
+              {hasSelection && (
+                <span
+                  className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
+                  style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: 'white' }}
+                >
+                  ✓
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
       {/* Uitje kaarten */}
       <div className="flex flex-col gap-4 mb-24">
