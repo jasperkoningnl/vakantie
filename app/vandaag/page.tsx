@@ -6,7 +6,7 @@ import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
 import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
 
-const HOME_COORDS: [number, number] = [44.521, 1.150]
+const HOME_COORDS: [number, number] = [44.3982, 1.1189]
 
 const CATEGORIES = [
   { label: 'Iets voor Lena', icon: 'child_care',    value: 'lena',     color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => ['u1','u2','u6','u13','u14','u19','u22','u23','u29','u30','u31','u32'].includes(u.id) },
@@ -155,7 +155,7 @@ export default function VandaagPage() {
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.521&longitude=1.150&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3')
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.3982&longitude=1.1189&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3')
       .then(r => r.json()).then(setWeather).catch(() => {})
 
     const saved = localStorage.getItem('dagplan_basket')
@@ -517,7 +517,7 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   const routeCoords: Record<string, string> = {
     'Amersfoort': '52.155,5.387',
     'Atelier des Sens 89': '47.861,3.562',
-    'Les Escaliers': '44.521,1.150',
+    'Les Escaliers': '44.3982,1.1189',
     'Chartres': '48.447,1.489',
   }
   const fromCoord = routeCoords[entry.van] || ''

@@ -5,7 +5,7 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
-const HOME_COORDS: [number, number] = [44.521, 1.150]
+const HOME_COORDS: [number, number] = [44.3982, 1.1189]
 
 function haversineKm(a: [number, number], b: [number, number]): number {
   const R = 6371
