@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requirePrivateAccess } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   const { date, plan_text, actual_text, mood_emoji, photos } = await req.json()
 
   const photoDesc = photos?.length

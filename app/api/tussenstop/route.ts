@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requirePrivateAccess } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   try {
     const { van, naar, route, lat, lon } = await req.json()
 

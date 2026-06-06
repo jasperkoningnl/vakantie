@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requirePrivateAccess } from '@/lib/api-auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET() {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   const db = supabaseAdmin()
   const { data } = await db
     .from('safe_arrival')
@@ -14,6 +18,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   const { leg, message } = await req.json()
   const db = supabaseAdmin()
   const { data, error } = await db
