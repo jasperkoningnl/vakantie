@@ -137,30 +137,8 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
     if (!mapRef.current || !selected) return
     const uitje = uitjes.find(u => u.id === selected)
     if (!uitje) return
-
-    import('leaflet').then(L => {
-      if (!mapRef.current) return
-      mapRef.current.setView(uitje.coords, 13)
-      const inBasket = basketIds.includes(uitje.id)
-      const addBtn = inBasket
-        ? `<span style="font-size:11px;color:#FF6B6B;font-weight:600;">✓ In plan</span>`
-        : `<button onclick="document.dispatchEvent(new CustomEvent('basket-add',{detail:'${uitje.id}'}));this.textContent='✓ Toegevoegd';" style="font-size:11px;color:#FF6B6B;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">+ Voeg toe</button>`
-
-      L.popup({ closeButton: true })
-        .setLatLng(uitje.coords)
-        .setContent(`
-          <div style="font-family:sans-serif;min-width:180px;">
-            <p style="font-weight:700;margin:0 0 4px;">${uitje.name}</p>
-            <p style="font-size:12px;color:#64748B;margin:0 0 8px;">${uitje.drive} · ${uitje.desc}</p>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <a href="${uitje.gmaps}" target="_blank" style="font-size:11px;color:#4D96FF;font-weight:600;">Maps</a>
-              ${addBtn}
-            </div>
-          </div>
-        `)
-        .openOn(mapRef.current)
-    })
-  }, [selected])
+    mapRef.current.setView(uitje.coords, 13)
+  }, [selected, uitjes])
 
   return <div ref={containerRef} className="w-full h-full" />
 }
