@@ -5,7 +5,17 @@ import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
-type FilterValue = UitjeType | 'all' | 'lena' | 'nature'
+const HOME_COORDS: [number, number] = [44.521, 1.150]
+
+function haversineKm(a: [number, number], b: [number, number]): number {
+  const R = 6371
+  const dLat = (b[0] - a[0]) * Math.PI / 180
+  const dLon = (b[1] - a[1]) * Math.PI / 180
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+}
+
+type FilterValue = UitjeType | 'all' | 'lena' | 'nature' | 'nearby'
 
 interface Filter {
   label: string
@@ -14,13 +24,14 @@ interface Filter {
 }
 
 const FILTERS: Filter[] = [
-  { label: 'Alles',       value: 'all',           icon: 'explore' },
-  { label: 'Lena',        value: 'lena',          icon: 'child_care' },
-  { label: 'Cultuur',     value: 'culture',       icon: 'museum' },
-  { label: 'Natuur',      value: 'nature',        icon: 'forest' },
-  { label: 'Eten',        value: 'food',          icon: 'restaurant' },
-  { label: 'Bakkertje',   value: 'bakery',        icon: 'bakery_dining' },
-  { label: 'Boodschappen', value: 'shop',         icon: 'shopping_cart' },
+  { label: 'Alles',        value: 'all',     icon: 'explore' },
+  { label: 'In de buurt',  value: 'nearby',  icon: 'near_me' },
+  { label: 'Lena',         value: 'lena',    icon: 'child_care' },
+  { label: 'Cultuur',      value: 'culture', icon: 'museum' },
+  { label: 'Natuur',       value: 'nature',  icon: 'forest' },
+  { label: 'Eten',         value: 'food',    icon: 'restaurant' },
+  { label: 'Bakkertje',    value: 'bakery',  icon: 'bakery_dining' },
+  { label: 'Boodschappen', value: 'shop',    icon: 'shopping_cart' },
 ]
 
 const LENA_IDS = ['u1', 'u2', 'u6', 'u13', 'u14', 'u19', 'u22', 'u23', 'u29', 'u30', 'u31', 'u32']
@@ -45,6 +56,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const FILTER_COLORS: Record<string, string> = {
   all:           'oklch(57% 0.14 40)',
+  nearby:        'oklch(60% 0.11 185)',
   lena:          'oklch(79% 0.16 83)',
   culture:       'oklch(57% 0.14 40)',
   entertainment: 'oklch(79% 0.16 83)',
@@ -61,6 +73,8 @@ export default function UitjesPage() {
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [visitedNames, setVisitedNames] = useState<string[]>([])
   const [detailUitje, setDetailUitje] = useState<Uitje | null>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null)
+  const [locationDenied, setLocationDenied] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('dagplan_basket')
@@ -87,6 +101,16 @@ export default function UitjesPage() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (filter !== 'nearby' || userLocation || locationDenied) return
+    if (!('geolocation' in navigator)) { setLocationDenied(true); return }
+    navigator.geolocation.getCurrentPosition(
+      pos => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => setLocationDenied(true),
+      { enableHighAccuracy: false, timeout: 10000 }
+    )
+  }, [filter, userLocation, locationDenied])
+
   // Lock body scroll when detail sheet is open
   useEffect(() => {
     if (detailUitje) {
@@ -97,11 +121,20 @@ export default function UitjesPage() {
     return () => { document.body.style.overflow = '' }
   }, [detailUitje])
 
+  const locationBase: [number, number] = userLocation
+    ? [userLocation.lat, userLocation.lon]
+    : HOME_COORDS
+
   const filtered = uitjes.filter(u => {
-    if (filter === 'all') return true
+    if (filter === 'all' || filter === 'nearby') return true
     if (filter === 'lena') return LENA_IDS.includes(u.id)
     if (filter === 'nature') return u.type === 'nature' || u.type === 'entertainment'
+    if (filter === 'food') return u.type === 'food' && !u.marktDag
+    if (filter === 'shop') return u.type === 'shop' || u.type === 'bakery' || !!u.marktDag
     return u.type === filter
+  }).sort((a, b) => {
+    if (filter !== 'nearby') return 0
+    return haversineKm(locationBase, a.coords) - haversineKm(locationBase, b.coords)
   })
 
   const isVisited = (u: Uitje) => visitedNames.some(n => n.includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(n))
