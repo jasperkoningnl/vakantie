@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop } from '@/lib/types'
 import { uitjes, Uitje } from '@/lib/uitjes'
-import { marktdagen } from '@/lib/marktdagen'
 import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
 import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
@@ -13,8 +12,8 @@ const CATEGORIES = [
   { label: 'Iets voor Lena', icon: 'child_care',    value: 'lena',     color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => ['u1','u2','u6','u13','u14','u19','u22','u23','u29','u30','u31','u32'].includes(u.id) },
   { label: 'Kasteel of dorp', icon: 'castle',        value: 'culture',  color: 'oklch(57% 0.14 40)',  bg: 'oklch(93% 0.05 40)',  uitjeFilter: (u: Uitje) => u.type === 'culture' },
   { label: 'Water of bos',    icon: 'forest',        value: 'nature',   color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)', uitjeFilter: (u: Uitje) => (u.type === 'entertainment' || u.type === 'nature') && !u.marktDag },
-  { label: 'Lekker eten',     icon: 'restaurant',   value: 'food',     color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)', uitjeFilter: (u: Uitje) => u.type === 'food' },
-  { label: 'Boodschappen',    icon: 'shopping_cart', value: 'shop',     color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)', uitjeFilter: (u: Uitje) => u.type === 'shop' },
+  { label: 'Lekker eten',     icon: 'restaurant',   value: 'food',     color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)', uitjeFilter: (u: Uitje) => u.type === 'food' && !u.marktDag },
+  { label: 'Boodschappen',    icon: 'shopping_cart', value: 'shop',     color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)', uitjeFilter: (u: Uitje) => u.type === 'shop' || (!!u.marktDag && isTodayMarkt(u)) },
   { label: 'Verras ons',      icon: 'auto_awesome',  value: 'surprise', color: 'oklch(68% 0.11 10)',  bg: 'oklch(93% 0.05 10)',  uitjeFilter: (u: Uitje) => !u.marktDag && u.type !== 'bakery' },
 ]
 
@@ -33,9 +32,6 @@ interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
 function getTodayDateStr() { return getParisDateString() }
 function getTomorrowDateStr() { return getParisDateString(1) }
-function getTodayMarkten() {
-  return marktdagen.filter(m => m.dag === getParisWeekdayName())
-}
 function isTodayMarkt(uitje: Uitje): boolean {
   if (!uitje.marktDag) return false
   return uitje.marktDag.split(',').map(d => d.trim()).includes(getParisWeekdayName())
@@ -155,9 +151,7 @@ export default function VandaagPage() {
   const todayEntry = reiskalender[today] ?? null
   const tomorrowEntry = reiskalender[tomorrow] ?? null
   const isReisdag = todayEntry?.type === 'reisdag'
-  const vandaagMarkten = getTodayMarkten()
   const after17 = isAfter17Paris()
-  const vandaagMarktUitjeIds = uitjes.filter(u => u.marktDag && isTodayMarkt(u)).map(u => u.id)
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
@@ -340,8 +334,6 @@ export default function VandaagPage() {
 
       <WeatherCard weather={weather} />
 
-      {userLocation && !isReisdag && <NearMeCard location={userLocation} />}
-
       {showVertreklijst && (
         <a href="/vertreklijst" className="flex items-center gap-3 rounded-2xl p-4 mb-4 shadow-blue" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)', textDecoration: 'none' }}>
           <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(40% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>checklist</span>
@@ -357,37 +349,6 @@ export default function VandaagPage() {
         <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)' }}>
           <span className="material-symbols-outlined text-base mt-0.5" style={{ color: 'oklch(65% 0.10 218)' }}>water_drop</span>
           <p className="text-sm" style={{ color: '#2C2316' }}>{rainWarning}</p>
-        </div>
-      )}
-
-      {vandaagMarkten.length > 0 && phase === 'select' && (
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
-          <div className="flex items-start gap-2 mb-2">
-            <span className="text-xl">🛒</span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-on-surface">Marktdag vandaag!</p>
-              {vandaagMarkten.map((m, i) => (
-                <p key={i} className="text-xs" style={{ color: '#6B5A3E' }}>{m.plaats} — {m.omschrijving}</p>
-              ))}
-            </div>
-          </div>
-          {vandaagMarktUitjeIds.length > 0 && (
-            <button
-              onClick={() => {
-                setBasketIds(prev => {
-                  const next = [...new Set([...prev, ...vandaagMarktUitjeIds])]
-                  localStorage.setItem('dagplan_basket', JSON.stringify(next))
-                  return next
-                })
-                setPhase('confirm')
-              }}
-              className="w-full rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-1.5"
-              style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}
-            >
-              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
-              Voeg markt toe aan dag →
-            </button>
-          )}
         </div>
       )}
 
@@ -1618,22 +1579,6 @@ function PlanMorgenSection({ tomorrowEntry, tomorrowPlan, basketIds, onToggleBas
           )}
         </>
       )}
-    </div>
-  )
-}
-
-function NearMeCard({ location }: { location: UserLocation }) {
-  return (
-    <div className="rounded-2xl p-4 mb-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
-      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>In de buurt</div>
-      <div className="flex gap-2">
-        {[{ icon: '🥖', label: 'Bakker', query: 'boulangerie' }, { icon: '🛒', label: 'Supermarkt', query: 'supermarché' }, { icon: '🛝', label: 'Speeltuin', query: 'aire de jeux' }].map(s => (
-          <a key={s.query} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.query)}&near=${location.lat},${location.lon}`} target="_blank" rel="noopener noreferrer" className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}>
-            <span className="text-2xl">{s.icon}</span>
-            <span className="text-xs font-semibold" style={{ color: '#6B5A3E' }}>{s.label}</span>
-          </a>
-        ))}
-      </div>
     </div>
   )
 }
