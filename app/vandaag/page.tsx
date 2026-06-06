@@ -1035,7 +1035,7 @@ function ConfirmPhase({
       <div className="flex flex-col gap-3 mb-5">
         <div className="flex items-center gap-3 px-1 py-1.5">
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>🏠</div>
-          <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.08 148)' }}>Les Escaliers (start &amp; thuiskomst)</p>
+          <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.08 148)' }}>Les Escaliers des Combes (vertrek)</p>
         </div>
 
         {sortedStops.map((u, i) => {
@@ -1068,6 +1068,10 @@ function ConfirmPhase({
             </button>
           )
         })}
+        <div className="flex items-center gap-3 px-1 py-1.5">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>🏠</div>
+          <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.08 148)' }}>Les Escaliers des Combes (thuiskomst)</p>
+        </div>
       </div>
 
       <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-2xl p-3 mb-5 text-sm font-semibold" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)', color: 'oklch(65% 0.10 218)' }}>
@@ -1240,6 +1244,16 @@ function DagplanView({
       <div className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Dagprogramma</div>
       <div className="relative mb-5" style={{ paddingLeft: 32 }}>
         <div className="absolute top-2 bottom-2 w-0.5 rounded-full" style={{ left: 12, background: '#E4D9C8' }} />
+
+        {/* Vertrekpunt */}
+        <div className="relative mb-4">
+          <div className="absolute z-10" style={{ left: -22, top: 4, width: 14, height: 14, borderRadius: '50%', background: 'oklch(58% 0.10 148)', border: '2.5px solid oklch(58% 0.10 148)' }} />
+          <div className="rounded-2xl p-4" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.35)' }}>
+            <p className="text-xs font-bold mb-0.5" style={{ color: 'oklch(40% 0.08 148)' }}>🏠 Vertrek</p>
+            <h3 className="font-bold text-sm" style={{ color: 'oklch(35% 0.08 148)' }}>Les Escaliers des Combes</h3>
+          </div>
+        </div>
+
         {dayPlan.stops.map((stop, i) => {
           const stopTime = parseTime(stop.time)
           const isNow = i < dayPlan.stops.length - 1
@@ -1295,6 +1309,15 @@ function DagplanView({
             </div>
           )
         })}
+
+        {/* Thuiskomst */}
+        <div className="relative mb-4">
+          <div className="absolute z-10" style={{ left: -22, top: 4, width: 14, height: 14, borderRadius: '50%', background: 'oklch(58% 0.10 148)', border: '2.5px solid oklch(58% 0.10 148)' }} />
+          <div className="rounded-2xl p-4" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.35)' }}>
+            <p className="text-xs font-bold mb-0.5" style={{ color: 'oklch(40% 0.08 148)' }}>🏠 Thuiskomst</p>
+            <h3 className="font-bold text-sm" style={{ color: 'oklch(35% 0.08 148)' }}>Les Escaliers des Combes</h3>
+          </div>
+        </div>
       </div>
 
       {/* Action buttons */}
