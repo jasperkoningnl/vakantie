@@ -24,8 +24,6 @@ interface Filter {
 }
 
 const FILTERS: Filter[] = [
-  { label: 'Alles',        value: 'all',     icon: 'explore' },
-  { label: 'In de buurt',  value: 'nearby',  icon: 'near_me' },
   { label: 'Lena',         value: 'lena',    icon: 'child_care' },
   { label: 'Cultuur',      value: 'culture', icon: 'museum' },
   { label: 'Natuur',       value: 'nature',  icon: 'forest' },
