@@ -5,6 +5,7 @@ import { uitjes, Uitje } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
 import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
+import { getParisDateString, getParisWeekdayName, isAfterParisHour } from '@/lib/date-utils'
 
 const HOME_COORDS: [number, number] = [44.521, 1.150]
 
@@ -31,34 +32,26 @@ interface UserLocation { lat: number; lon: number }
 interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
 function getTodayDateStr() {
-  return new Date().toISOString().split('T')[0]
+  return getParisDateString()
 }
 
 function getTomorrowDateStr() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
+  return getParisDateString(1)
 }
 
 function getTodayMarkten() {
-  const today = new Date().getDay()
-  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
-  const todayNaam = dagNamen[today]
+  const todayNaam = getParisWeekdayName()
   return marktdagen.filter(m => m.dag === todayNaam)
 }
 
 function isTodayMarkt(uitje: Uitje): boolean {
   if (!uitje.marktDag) return false
-  const today = new Date().getDay()
-  const dagNamen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
-  const todayNaam = dagNamen[today]
+  const todayNaam = getParisWeekdayName()
   return uitje.marktDag.split(',').map(d => d.trim()).includes(todayNaam)
 }
 
 function isAfter17Paris(): boolean {
-  const now = new Date()
-  const parisHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }))
-  return parisHour >= 17
+  return isAfterParisHour(17)
 }
 
 function haversineKm(a: [number, number], b: [number, number]): number {
@@ -70,7 +63,7 @@ function haversineKm(a: [number, number], b: [number, number]): number {
 }
 
 function getTodayBaseCoords(): [number, number] | null {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getParisDateString()
   const entry = reiskalender[today]
   if (!entry) return null
   if (entry.type === 'vakantie' || entry.type === 'verblijf') return entry.coords
