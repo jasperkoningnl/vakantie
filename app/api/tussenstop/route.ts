@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePrivateAccess } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
+import { checkRateLimit, limitText, logMinimalApiError } from '@/lib/ai-request-safety'
 
 export async function POST(req: NextRequest) {
   const unauthorized = await requirePrivateAccess()
   if (unauthorized) return unauthorized
 
+  const rateLimited = checkRateLimit(req, '/api/tussenstop')
+  if (rateLimited) return rateLimited
+
   try {
     const { van, naar, route, lat, lon } = await req.json()
+    const safeVan = limitText(van, 120)
+    const safeNaar = limitText(naar, 120)
+    const safeRoute = limitText(route, 800)
+    const safeLat = limitText(lat, 32)
+    const safeLon = limitText(lon, 32)
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -18,7 +27,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: 'user',
-          content: `Het gezin rijdt vandaag van ${van} naar ${naar} via ${route}. Hun huidige locatie is ${lat}, ${lon}. Stel een tussenstop voor: een dorpje waar ze even van de snelweg af kunnen, Lena (4 jaar) kan rondrennen, en ze ergens kunnen lunchen of een koffie drinken. Geef naam, korte omschrijving (max 2 zinnen), en een Google Maps link. Denk aan dorpspleinen, boulangeries, parken langs de route. Schrijf in het Nederlands.\n\nAntwoord ALLEEN met geldige JSON:\n{"naam": "...", "beschrijving": "...", "gmaps": "https://..."}`,
+          content: `Het gezin rijdt vandaag van ${safeVan} naar ${safeNaar} via ${safeRoute}. Hun huidige locatie is ${safeLat}, ${safeLon}. Stel een tussenstop voor: een dorpje waar ze even van de snelweg af kunnen, Lena (4 jaar) kan rondrennen, en ze ergens kunnen lunchen of een koffie drinken. Geef naam, korte omschrijving (max 2 zinnen), en een Google Maps link. Denk aan dorpspleinen, boulangeries, parken langs de route. Schrijf in het Nederlands.\n\nAntwoord ALLEEN met geldige JSON:\n{"naam": "...", "beschrijving": "...", "gmaps": "https://..."}`,
         },
       ],
     })
@@ -31,8 +40,7 @@ export async function POST(req: NextRequest) {
     const parsed = JSON.parse(cleaned)
     return NextResponse.json(parsed)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('[/api/tussenstop]', msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    logMinimalApiError('/api/tussenstop', err)
+    return NextResponse.json({ error: 'Er ging iets mis.' }, { status: 500 })
   }
 }
