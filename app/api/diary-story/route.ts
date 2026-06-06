@@ -3,6 +3,7 @@ import { requirePrivateAccess } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from '@/lib/supabase'
 import { reiskalender } from '@/lib/reiskalender'
+import { checkRateLimit, limitText, logMinimalApiError } from '@/lib/ai-request-safety'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -68,15 +69,14 @@ function validateStoryPayload(body: unknown): { data?: StoryPayload; error?: str
     const value = source[field]
     if (value === undefined || value === null) continue
     if (typeof value !== 'string') return { error: `${field} moet tekst zijn.` }
-    if (value.length > STORY_TEXT_LIMITS[field]) return { error: `${field} is te lang.` }
-    payload[field] = value
+    payload[field] = limitText(value, STORY_TEXT_LIMITS[field])
   }
 
   if (source.mood_emoji !== undefined && source.mood_emoji !== null) {
-    if (typeof source.mood_emoji !== 'string' || source.mood_emoji.length > 16) {
+    if (typeof source.mood_emoji !== 'string') {
       return { error: 'mood_emoji moet een korte tekst zijn.' }
     }
-    payload.mood_emoji = source.mood_emoji
+    payload.mood_emoji = limitText(source.mood_emoji, 16)
   }
 
   const { data: photos, error: photosError } = validatePhotos(source.photos)
@@ -89,6 +89,9 @@ function validateStoryPayload(body: unknown): { data?: StoryPayload; error?: str
 export async function POST(req: NextRequest) {
   const unauthorized = await requirePrivateAccess()
   if (unauthorized) return unauthorized
+
+  const rateLimited = checkRateLimit(req, '/api/diary-story')
+  if (rateLimited) return rateLimited
 
   let body: unknown
 
@@ -103,19 +106,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 })
   }
 
-  const { date, plan_text, actual_text, mood_emoji, photos } = payload
+  try {
+    const { date, plan_text, actual_text, mood_emoji, photos } = payload
 
-  const photoDesc = photos?.length
-    ? `Foto's genomen op deze dag: ${photos.map(p => p.filename).join(', ')}`
-    : 'Geen foto\'s beschikbaar.'
+    const photoDesc = photos?.length
+      ? `Foto's genomen op deze dag: ${photos.map(p => limitText(p.filename, 80)).join(', ')}`
+      : 'Geen foto\'s beschikbaar.'
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 400,
-    messages: [
-      {
-        role: 'user',
-        content: `Schrijf een kort, warm dagboekverhaaltje (max 150 woorden) in de stijl van een persoonlijk reisdagboek.
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 400,
+      messages: [
+        {
+          role: 'user',
+          content: `Schrijf een kort, warm dagboekverhaaltje (max 150 woorden) in de stijl van een persoonlijk reisdagboek.
 Schrijf in de eerste persoon meervoud ("we").
 Basis:
 - Plan was: ${plan_text || 'niet ingevuld'}
@@ -124,17 +128,24 @@ Basis:
 - ${photoDesc}
 
 Schrijf in het Nederlands, warm en persoonlijk. Alleen de dagboektekst, geen titels of inleidingen.`,
-      },
-    ],
-  })
+        },
+      ],
+    })
 
-  const story_text = message.content[0].type === 'text' ? message.content[0].text.slice(0, 2000) : ''
+    const story_text = message.content[0].type === 'text' ? message.content[0].text.slice(0, 2000) : ''
 
-  const db = supabaseAdmin()
-  const { error } = await db
-    .from('diary_entries')
-    .upsert({ date, story_text }, { onConflict: 'date' })
+    const db = supabaseAdmin()
+    const { error } = await db
+      .from('diary_entries')
+      .upsert({ date, story_text }, { onConflict: 'date' })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ story_text })
+    if (error) {
+      logMinimalApiError('/api/diary-story', error)
+      return NextResponse.json({ error: 'Er ging iets mis.' }, { status: 500 })
+    }
+    return NextResponse.json({ story_text })
+  } catch (err) {
+    logMinimalApiError('/api/diary-story', err)
+    return NextResponse.json({ error: 'Er ging iets mis.' }, { status: 500 })
+  }
 }

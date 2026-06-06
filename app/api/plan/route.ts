@@ -5,6 +5,7 @@ import { uitjes } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
 import { getParisWeekdayName } from '@/lib/date-utils'
 import { speeltuinen } from '@/lib/speeltuinen'
+import { checkRateLimit, limitStringArray, limitText, logMinimalApiError } from '@/lib/ai-request-safety'
 
 const LENA_DAGRITME = `Houd rekening met Lena's dagritme. Ze is 4 jaar oud. De ochtend (9:00-12:00) is het actieve venster: plan dan de buitenactiviteit of het avontuur. Rond 12:30 lunchen. Tussen 13:00 en 15:00 is een rustig moment (autorit = slaapje in de auto). Vanaf 15:00 een tweede kort venster voor een kalme activiteit. Plan de langste autorit rond 13:30 als dat kan. Eindig de dag niet te laat: uiterlijk 17:30 terug bij Les Escaliers.`
 
@@ -41,8 +42,16 @@ export async function POST(req: NextRequest) {
   const unauthorized = await requirePrivateAccess()
   if (unauthorized) return unauthorized
 
+  const rateLimited = checkRateLimit(req, '/api/plan')
+  if (rateLimited) return rateLimited
+
   try {
     const { phase, activity, driveTime, weather, selectedIds, visitedNames } = await req.json()
+    const safeActivity = limitText(activity, 300)
+    const safeDriveTime = limitText(driveTime, 80)
+    const safeWeather = limitText(weather, 600)
+    const safeSelectedIds = limitStringArray(selectedIds, 10, 20)
+    const safeVisitedNames = limitStringArray(visitedNames, 50, 120)
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -51,8 +60,8 @@ export async function POST(req: NextRequest) {
       .join('\n')
 
     const marktContext = buildMarktdagenContext()
-    const visitedContext = visitedNames?.length
-      ? `\nDe volgende uitjes zijn al bezocht en hoef je niet meer voor te stellen: ${(visitedNames as string[]).join(', ')}.`
+    const visitedContext = safeVisitedNames.length
+      ? `\nDe volgende uitjes zijn al bezocht en hoef je niet meer voor te stellen: ${safeVisitedNames.join(', ')}.`
       : ''
     const speeltuinenContext = `\nSpeeltuinen in de regio (gebruik als route-tip voor Lena): ${speeltuinen.map(s => `${s.name} (${s.coords[0].toFixed(3)}, ${s.coords[1].toFixed(3)})`).join('; ')}.`
 
@@ -66,9 +75,9 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: 'user',
-            content: `Weer: ${weather}
-Gewenste activiteit: ${activity}
-Maximale rijduur: ${driveTime}
+            content: `Weer: ${safeWeather}
+Gewenste activiteit: ${safeActivity}
+Maximale rijduur: ${safeDriveTime}
 
 Beschikbare uitjes:
 ${uitjesText}
@@ -86,7 +95,7 @@ Antwoord ALLEEN met geldige JSON in dit formaat (geen andere tekst):
     }
 
     if (phase === 'plan') {
-      const selected = uitjes.filter(u => selectedIds.includes(u.id))
+      const selected = uitjes.filter(u => safeSelectedIds.includes(u.id))
       const selectedText = selected
         .map(u => `${u.name} (coords: ${u.coords[0]}, ${u.coords[1]}): ${u.desc} (${u.drive}, maps: ${u.gmaps})`)
         .join('\n')
@@ -98,9 +107,9 @@ Antwoord ALLEEN met geldige JSON in dit formaat (geen andere tekst):
         messages: [
           {
             role: 'user',
-            content: `Weer: ${weather}
-Gewenste activiteit: ${activity}
-Maximale rijduur: ${driveTime}
+            content: `Weer: ${safeWeather}
+Gewenste activiteit: ${safeActivity}
+Maximale rijduur: ${safeDriveTime}
 Gekozen uitjes:
 ${selectedText}
 
@@ -136,8 +145,7 @@ Gebruik "isTip": true voor optionele tussenstops (speeltuinen, boulangeries etc.
 
     return NextResponse.json({ error: 'Onbekende fase' }, { status: 400 })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('[/api/plan]', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    logMinimalApiError('/api/plan', err)
+    return NextResponse.json({ error: 'Er ging iets mis.' }, { status: 500 })
   }
 }
