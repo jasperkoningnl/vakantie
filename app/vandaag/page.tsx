@@ -50,12 +50,11 @@ function haversineKm(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
 
-function getTodayBaseCoords(): [number, number] | null {
+function getTodayBaseCoords(): [number, number] {
   const today = getParisDateString()
   const entry = reiskalender[today]
-  if (!entry) return null
-  if (entry.type === 'vakantie' || entry.type === 'verblijf') return entry.coords
-  return null
+  if (entry && (entry.type === 'vakantie' || entry.type === 'verblijf')) return entry.coords
+  return HOME_COORDS
 }
 
 function getRainWarning(weather: WeatherData | null): string | null {
@@ -80,11 +79,14 @@ function sortByRoute(stops: Uitje[], destinationId: string): Uitje[] {
   if (!dest) return stops
   const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
   const lenSq = rv[0] ** 2 + rv[1] ** 2
-  const proj = (u: Uitje) => {
+  const proj = (u: Uitje): number => {
     const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
-    return (v[0] * rv[0] + v[1] * rv[1]) / lenSq
+    return lenSq > 0 ? (v[0] * rv[0] + v[1] * rv[1]) / lenSq : 0
   }
-  return [...others.sort((a, b) => proj(a) - proj(b)), dest]
+  // On-route stops first (home→destination order), off-route last (visit on return)
+  const onRoute = others.filter(u => proj(u) >= -0.1).sort((a, b) => proj(a) - proj(b))
+  const offRoute = others.filter(u => proj(u) < -0.1)
+  return [...onRoute, dest, ...offRoute]
 }
 
 function getRouteInfo(stop: Uitje, destinationId: string): { proj: number; perpRatio: number } {
@@ -843,20 +845,24 @@ function SelectPhase({
 
   const rawCatUitjes = uitjes
     .filter(activeCat.uitjeFilter)
-    .filter(u => !baseCoords || haversineKm(u.coords, baseCoords) <= 250)
+    .filter(u => haversineKm(u.coords, baseCoords) <= 150)
 
-  // When destination is set: sort by route projection (destination last)
+  // When destination is set: on-route items first (ascending proj), off-route last
   const catUitjes = mainDestinationId
     ? (() => {
         const dest = uitjes.find(u => u.id === mainDestinationId)
         if (!dest) return rawCatUitjes
         const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
         const lenSq = rv[0] ** 2 + rv[1] ** 2
-        const proj = (u: Uitje) => {
+        const proj = (u: Uitje): number => {
           const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
           return lenSq > 0 ? (v[0] * rv[0] + v[1] * rv[1]) / lenSq : 0
         }
-        return [...rawCatUitjes].sort((a, b) => proj(a) - proj(b))
+        const destInList = rawCatUitjes.find(u => u.id === mainDestinationId)
+        const others = rawCatUitjes.filter(u => u.id !== mainDestinationId)
+        const onRoute = others.filter(u => proj(u) >= -0.1).sort((a, b) => proj(a) - proj(b))
+        const offRoute = others.filter(u => proj(u) < -0.1)
+        return [...onRoute, ...(destInList ? [destInList] : []), ...offRoute]
       })()
     : rawCatUitjes
 
