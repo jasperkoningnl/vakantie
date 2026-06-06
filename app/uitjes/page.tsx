@@ -24,11 +24,11 @@ interface Filter {
 }
 
 const FILTERS: Filter[] = [
-  { label: 'Lena',         value: 'lena',    icon: 'child_care' },
+  { label: 'Vermaak',      value: 'lena',    icon: 'child_care' },
   { label: 'Cultuur',      value: 'culture', icon: 'museum' },
   { label: 'Natuur',       value: 'nature',  icon: 'forest' },
   { label: 'Eten',         value: 'food',    icon: 'restaurant' },
-  { label: 'Bakkertje',    value: 'bakery',  icon: 'bakery_dining' },
+  { label: 'Bakkers',      value: 'bakery',  icon: 'bakery_dining' },
   { label: 'Boodschappen', value: 'shop',    icon: 'shopping_cart' },
 ]
 
