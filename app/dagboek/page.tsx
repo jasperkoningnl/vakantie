@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { DiaryEntry, PhotoMeta } from '@/lib/types'
 
@@ -17,20 +17,20 @@ const VACATION_DAYS: string[] = Array.from({ length: 15 }, (_, i) => {
   return d.toISOString().split('T')[0]
 })
 
-type SaveStatus = 'dirty' | 'saving' | 'saved' | 'failed'
+type SaveStatus = 'unsaved' | 'saving' | 'saved' | 'failed'
 
 type DaySaveState = {
   status: SaveStatus
+  revision: number
   error?: string
 }
 
 const SAVE_STATUS_LABELS: Record<SaveStatus, string> = {
-  dirty: 'Niet opgeslagen',
+  unsaved: 'Niet opgeslagen',
   saving: 'Opslaan…',
   saved: 'Opgeslagen',
   failed: 'Opslaan mislukt',
 }
-
 
 const formatPlanText = (planText?: string) => {
   if (!planText) return 'Geen plan gemaakt.'
@@ -97,6 +97,7 @@ export default function DagboekPage() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Record<string, string[]>>({})
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [saveStates, setSaveStates] = useState<Record<string, DaySaveState>>({})
+  const saveRevisionsRef = useRef<Record<string, number>>({})
   const [diaryLoadError, setDiaryLoadError] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
   const [loadingPhotos, setLoadingPhotos] = useState<string | null>(null)
@@ -115,8 +116,12 @@ export default function DagboekPage() {
         const data: DiaryEntry[] = await res.json()
         const map: Record<string, DiaryEntry> = {}
         data.forEach(e => { map[e.date] = e })
+        const loadedSaveStates = Object.fromEntries(
+          data.map(e => [e.date, { status: 'saved' as const, revision: 0 }])
+        )
         setEntries(map)
-        setSaveStates(Object.fromEntries(data.map(e => [e.date, { status: 'saved' as const }])))
+        saveRevisionsRef.current = Object.fromEntries(data.map(e => [e.date, 0]))
+        setSaveStates(loadedSaveStates)
         setDiaryLoadError(null)
       } catch (error) {
         setDiaryLoadError(error instanceof Error ? error.message : 'Dagboek laden mislukt.')
@@ -161,16 +166,20 @@ export default function DagboekPage() {
   }
 
   const updateEntry = (date: string, updates: Partial<DiaryEntry>) => {
+    const nextRevision = (saveRevisionsRef.current[date] ?? 0) + 1
+    saveRevisionsRef.current = { ...saveRevisionsRef.current, [date]: nextRevision }
+
     setEntries(prev => ({
       ...prev,
       [date]: { ...(prev[date] || { date }), ...updates },
     }))
-    setSaveStates(prev => ({ ...prev, [date]: { status: 'dirty' } }))
+    setSaveStates(prev => ({ ...prev, [date]: { status: 'unsaved', revision: nextRevision } }))
   }
 
   const saveEntry = async (date: string) => {
     const entry = entries[date] || { date }
-    setSaveStates(prev => ({ ...prev, [date]: { status: 'saving' } }))
+    const saveRevision = saveRevisionsRef.current[date] ?? 0
+    setSaveStates(prev => ({ ...prev, [date]: { status: 'saving', revision: saveRevision } }))
 
     try {
       const res = await fetch('/api/diary', {
@@ -184,13 +193,18 @@ export default function DagboekPage() {
       }
 
       const saved: DiaryEntry = await res.json()
+      if ((saveRevisionsRef.current[date] ?? 0) !== saveRevision) return
+
       setEntries(prev => ({ ...prev, [date]: saved }))
-      setSaveStates(prev => ({ ...prev, [date]: { status: 'saved' } }))
+      setSaveStates(prev => ({ ...prev, [date]: { status: 'saved', revision: saveRevision } }))
     } catch (error) {
+      if ((saveRevisionsRef.current[date] ?? 0) !== saveRevision) return
+
       setSaveStates(prev => ({
         ...prev,
         [date]: {
           status: 'failed',
+          revision: saveRevision,
           error: error instanceof Error ? error.message : 'Opslaan mislukt.',
         },
       }))
@@ -380,7 +394,7 @@ export default function DagboekPage() {
         {VACATION_DAYS.map(date => {
           const entry = entries[date] || { date }
           const saveState = saveStates[date]
-          const saveStatus = saveState?.status ?? (entries[date] ? 'saved' : 'dirty')
+          const saveStatus = saveState?.status ?? (entries[date] ? 'saved' : 'unsaved')
           const isSaving = saveStatus === 'saving'
           const isExpanded = expandedDay === date
           const dayPhotos = photos[date] || []
@@ -410,7 +424,7 @@ export default function DagboekPage() {
                   </p>
                   <p
                     className="text-[10px] font-semibold mt-1"
-                    style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'dirty' ? 'oklch(57% 0.14 40)' : '#A8937A' }}
+                    style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'unsaved' ? 'oklch(57% 0.14 40)' : '#A8937A' }}
                   >
                     {SAVE_STATUS_LABELS[saveStatus]}
                   </p>
@@ -601,7 +615,7 @@ export default function DagboekPage() {
                       <div>
                         <p
                           className="text-xs font-semibold"
-                          style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'dirty' ? 'oklch(57% 0.14 40)' : '#6B5A3E' }}
+                          style={{ color: saveStatus === 'failed' ? 'oklch(50% 0.15 25)' : saveStatus === 'unsaved' ? 'oklch(57% 0.14 40)' : '#6B5A3E' }}
                         >
                           {SAVE_STATUS_LABELS[saveStatus]}
                         </p>
