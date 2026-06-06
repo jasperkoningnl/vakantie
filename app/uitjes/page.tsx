@@ -217,7 +217,7 @@ export default function UitjesPage() {
       {view === 'map' && (
         <div
           className="rounded-2xl overflow-hidden mb-4 shadow-blue"
-          style={{ height: 'calc(100vh - 280px)', border: '1px solid #E4D9C8' }}
+          style={{ height: 'calc(100vh - 360px)', border: '1px solid #E4D9C8', isolation: 'isolate' }}
         >
           <UitjesMap
             uitjes={filtered}

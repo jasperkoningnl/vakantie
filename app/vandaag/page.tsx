@@ -1,6 +1,9 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useSession, signIn } from 'next-auth/react'
+
+const DagRouteMap = dynamic(() => import('@/components/DagRouteMap'), { ssr: false })
 import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop, PhotoMeta } from '@/lib/types'
 import { uitjes, Uitje, getTodayMarktdagen, getUitjeById } from '@/lib/uitjes'
 import { reiskalender, Reisdag, VerblijfDay, KalenderEntry } from '@/lib/reiskalender'
@@ -1088,6 +1091,22 @@ function ConfirmPhase({
         }
       </p>
 
+      {/* Route map */}
+      {sortedStops.some(u => u.coords) && (
+        <div
+          className="rounded-2xl overflow-hidden mb-5 shadow-blue"
+          style={{ height: 220, border: '1px solid #E4D9C8', isolation: 'isolate' }}
+        >
+          <DagRouteMap
+            stops={sortedStops.map(u => ({
+              name: u.name,
+              coords: u.coords,
+              isMainDest: u.id === destinationId,
+            }))}
+          />
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 mb-5">
         <div className="flex items-center gap-3 px-1 py-1.5">
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>🏠</div>
@@ -1176,7 +1195,23 @@ function EditPlanView({
   return (
     <div>
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>Pas het plan aan</h2>
-      <p className="text-xs text-on-surface-variant mb-5">Verwijder stops of pas de volgorde aan.</p>
+      <p className="text-xs text-on-surface-variant mb-4">Verwijder stops of pas de volgorde aan.</p>
+
+      {/* Route map */}
+      {plan.stops.some(s => s.coords) && (
+        <div
+          className="rounded-2xl overflow-hidden mb-5 shadow-blue"
+          style={{ height: 220, border: '1px solid #E4D9C8', isolation: 'isolate' }}
+        >
+          <DagRouteMap
+            stops={plan.stops.map(s => ({
+              name: s.name,
+              coords: s.coords,
+              isTip: s.isTip,
+            }))}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 mb-5">
         {plan.stops.map((stop, i) => (
@@ -1281,6 +1316,23 @@ function DagplanView({
           <span className="text-xs" style={{ color: '#A8937A' }}>stop{totalStops !== 1 ? 's' : ''}</span>
         </div>
       </div>
+
+      {/* Route map */}
+      {dayPlan.stops.some(s => s.coords) && (
+        <div
+          className="rounded-2xl overflow-hidden mb-4 shadow-blue"
+          style={{ height: 220, border: '1px solid #E4D9C8', isolation: 'isolate' }}
+        >
+          <DagRouteMap
+            stops={dayPlan.stops.map(s => ({
+              name: s.name,
+              coords: s.coords,
+              isMainDest: s.uitjeId === mainDestinationId,
+              isTip: s.isTip,
+            }))}
+          />
+        </div>
+      )}
 
       {/* Timeline */}
       <div className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Dagprogramma</div>
