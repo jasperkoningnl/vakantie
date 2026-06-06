@@ -17,6 +17,39 @@ const VACATION_DAYS: string[] = Array.from({ length: 15 }, (_, i) => {
   return d.toISOString().split('T')[0]
 })
 
+type PlanStop = {
+  name?: unknown
+}
+
+function formatPlanText(planText?: string): string {
+  if (!planText) return 'Geen plan gemaakt.'
+
+  const trimmedPlanText = planText.trim()
+  if (!trimmedPlanText.startsWith('{')) return planText
+
+  try {
+    const parsed = JSON.parse(trimmedPlanText) as { stops?: PlanStop[] }
+    const stopNames = parsed.stops
+      ?.map(stop => stop.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+
+    return stopNames?.length ? stopNames.join(' → ') : 'Plan opgeslagen, maar niet leesbaar'
+  } catch {
+    return 'Plan opgeslagen, maar niet leesbaar'
+  }
+}
+
+function readSelectedPhotoIds(): Record<string, string[]> {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    const saved = localStorage.getItem('dagboek_selected_photos')
+    return saved ? JSON.parse(saved) : {}
+  } catch {
+    return {}
+  }
+}
+
 export default function DagboekPage() {
   const { data: session } = useSession()
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({})
@@ -421,11 +454,7 @@ export default function DagboekPage() {
                       </label>
                     </div>
                     <p className="text-sm text-on-surface-variant leading-relaxed">
-                      {entry.plan_text
-                        ? (typeof entry.plan_text === 'string' && entry.plan_text.startsWith('{')
-                          ? JSON.parse(entry.plan_text).stops?.map((s: { name: string }) => s.name).join(' → ')
-                          : entry.plan_text)
-                        : 'Geen plan gemaakt.'}
+                      {formatPlanText(entry.plan_text)}
                     </p>
                   </div>
 
