@@ -6,19 +6,32 @@ export async function GET(req: NextRequest) {
   const db = supabaseAdmin()
 
   if (date) {
-    const { data } = await db.from('diary_entries').select('*').eq('date', date).single()
+    const { data, error } = await db.from('diary_entries').select('*').eq('date', date).maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data || null)
   }
 
-  const { data } = await db
+  const { data, error } = await db
     .from('diary_entries')
     .select('*')
     .order('date', { ascending: false })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data || [])
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  let body: unknown
+
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Ongeldige JSON in het dagboekverzoek.' }, { status: 400 })
+  }
+
+  if (!body || typeof body !== 'object' || !('date' in body) || typeof body.date !== 'string') {
+    return NextResponse.json({ error: 'Een dagboekregel heeft een geldige datum nodig.' }, { status: 400 })
+  }
+
   const db = supabaseAdmin()
 
   const { data, error } = await db
