@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requirePrivateAccess } from '@/lib/api-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { uitjes } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
@@ -37,6 +38,9 @@ function extractJson(text: string): unknown {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requirePrivateAccess()
+  if (unauthorized) return unauthorized
+
   try {
     const { phase, activity, driveTime, weather, selectedIds, visitedNames } = await req.json()
 
