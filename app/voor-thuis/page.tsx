@@ -1,4 +1,3 @@
-import { requirePrivatePageAccess } from '@/lib/private-page-auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { SafeArrival } from '@/lib/types'
 
@@ -36,8 +35,6 @@ const STEP_COLORS = [
 ]
 
 export default async function VoorThuisPage() {
-  await requirePrivatePageAccess('/voor-thuis')
-
   const arrival = await getLatestArrival()
 
   const formatTs = (ts: string) => {
