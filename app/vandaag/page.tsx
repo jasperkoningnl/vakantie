@@ -641,25 +641,34 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
             ))}
           </div>
 
-          {/* Tussenstop suggestion */}
-          <button onClick={zoekTussenstop} disabled={tussenstopLoading} className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-3" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}>
-            {tussenstopLoading
-              ? <><span className="material-symbols-outlined text-base animate-spin">refresh</span>Tussenstop zoeken…</>
-              : <><span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>lightbulb</span>Zoek tussenstop suggestie</>
-            }
-          </button>
+          {/* Tussenstop suggestion — subtle link, not a big CTA */}
+          <div className="flex items-center mb-4">
+            <button onClick={zoekTussenstop} disabled={tussenstopLoading} className="flex items-center gap-1.5 text-xs font-semibold py-1 rounded-lg" style={{ color: '#A8937A' }}>
+              {tussenstopLoading
+                ? <><span className="material-symbols-outlined animate-spin" style={{ fontSize: 15 }}>refresh</span>Tussenstop zoeken…</>
+                : <><span className="material-symbols-outlined" style={{ fontSize: 15 }}>lightbulb</span>Stel tussenstop voor</>
+              }
+            </button>
+          </div>
 
           {tussenstop && (
             <div className="rounded-2xl p-4 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1.5px solid oklch(79% 0.16 83 / 0.4)' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-sm" style={{ color: 'oklch(79% 0.16 83)', fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#6B5A3E' }}>Suggestie</span>
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="material-symbols-outlined text-sm" style={{ color: 'oklch(79% 0.16 83)', fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#6B5A3E' }}>Suggestie</span>
+                  </div>
+                  <p className="font-bold text-on-surface">{tussenstop.naam}</p>
+                  <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">{tussenstop.beschrijving}</p>
+                  <a href={tussenstop.gmaps} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold" style={{ background: 'oklch(79% 0.16 83)', color: 'white', textDecoration: 'none' }}>
+                    <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1", fontSize: 13 }}>near_me</span>Navigeer
+                  </a>
+                </div>
+                <button onClick={() => setTussenstop(null)} className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.08)' }} aria-label="Sluit suggestie">
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6B5A3E' }}>close</span>
+                </button>
               </div>
-              <p className="font-bold text-on-surface">{tussenstop.naam}</p>
-              <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">{tussenstop.beschrijving}</p>
-              <a href={tussenstop.gmaps} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold" style={{ background: 'oklch(79% 0.16 83)', color: 'white', textDecoration: 'none' }}>
-                <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1", fontSize: 13 }}>near_me</span>Navigeer
-              </a>
             </div>
           )}
         </>
@@ -1016,26 +1025,28 @@ function SelectPhase({
         ))}
       </div>
 
-      {/* Bottom buttons */}
+      {/* Bottom buttons — sticky so they stay reachable in long lists */}
       {!addStopMode && mainDestinationId && (
-        <div className="flex flex-col gap-3 pb-4">
-          <button
-            onClick={onConfirm}
-            className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
-            style={{ background: 'oklch(57% 0.14 40)' }}
-          >
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
-            Maak dagplan
-          </button>
-          {onReset && (
+        <div className="sticky bottom-24 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 75%, transparent)' }}>
+          <div className="flex flex-col gap-3 pb-4">
             <button
-              onClick={onReset}
-              className="w-full rounded-2xl py-3 text-sm font-semibold"
-              style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
+              onClick={onConfirm}
+              className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
+              style={{ background: 'oklch(57% 0.14 40)' }}
             >
-              Begin opnieuw
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
+              Maak dagplan
             </button>
-          )}
+            {onReset && (
+              <button
+                onClick={onReset}
+                className="w-full rounded-2xl py-3 text-sm font-semibold"
+                style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
+              >
+                Begin opnieuw
+              </button>
+            )}
+          </div>
         </div>
       )}
       {addStopMode && (
@@ -1154,14 +1165,17 @@ function ConfirmPhase({
         Bekijk route alvast op kaart →
       </a>
 
-      <button onClick={() => onConfirm(sortedIds, destinationId)} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3" style={{ background: 'oklch(57% 0.14 40)' }}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
-        Maak dagplan
-      </button>
-
-      <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
-        Opnieuw beginnen
-      </button>
+      <div className="sticky bottom-24 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 75%, transparent)' }}>
+        <div className="flex flex-col gap-3 pb-4">
+          <button onClick={() => onConfirm(sortedIds, destinationId)} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2" style={{ background: 'oklch(57% 0.14 40)' }}>
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
+            Maak dagplan
+          </button>
+          <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
+            Opnieuw beginnen
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1197,13 +1211,14 @@ function EditPlanView({
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>Pas het plan aan</h2>
       <p className="text-xs text-on-surface-variant mb-4">Verwijder stops of pas de volgorde aan.</p>
 
-      {/* Route map */}
+      {/* Route map — key forces remount when stops change so markers stay in sync */}
       {plan.stops.some(s => s.coords) && (
         <div
           className="rounded-2xl overflow-hidden mb-5 shadow-blue"
           style={{ height: 220, border: '1px solid #E4D9C8', isolation: 'isolate' }}
         >
           <DagRouteMap
+            key={plan.stops.map(s => s.name).join(',')}
             stops={plan.stops.map(s => ({
               name: s.name,
               coords: s.coords,
@@ -1225,8 +1240,8 @@ function EditPlanView({
               </button>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 leading-none" style={{ background: stop.isTip ? '#A8937A' : 'oklch(57% 0.14 40)', color: 'white' }}>{i + 1}</span>
                 {stop.isTip && <span className="text-[10px]" style={{ color: '#A8937A' }}>Tip onderweg</span>}
               </div>
               <button onClick={() => stop.uitjeId && onOpenInfo(stop.uitjeId)} className="font-semibold text-sm text-on-surface text-left">
@@ -1246,14 +1261,17 @@ function EditPlanView({
         Voeg stop toe
       </button>
 
-      <button onClick={onConfirm} disabled={plan.stops.length === 0} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3 disabled:opacity-50" style={{ background: 'oklch(57% 0.14 40)' }}>
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
-        Bevestig als dagplan
-      </button>
-
-      <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
-        Opnieuw beginnen
-      </button>
+      <div className="sticky bottom-24 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 75%, transparent)' }}>
+        <div className="flex flex-col gap-3 pb-4">
+          <button onClick={onConfirm} disabled={plan.stops.length === 0} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'oklch(57% 0.14 40)' }}>
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
+            Bevestig als dagplan
+          </button>
+          <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
+            Opnieuw beginnen
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1361,13 +1379,6 @@ function DagplanView({
 
           return (
             <div key={i}>
-              {/* Travel time indicator */}
-              {travelMins !== null && (
-                <div className="flex items-center gap-1.5 px-1 py-1.5 mb-1" style={{ opacity: 0.65 }}>
-                  <span className="material-symbols-outlined" style={{ color: '#A8937A', fontSize: 14 }}>directions_car</span>
-                  <span className="text-xs font-medium" style={{ color: '#A8937A' }}>{formatTravelTime(travelMins)} rijden</span>
-                </div>
-              )}
               <div className="relative mb-2">
                 {/* Timeline dot */}
                 <div
@@ -1389,18 +1400,25 @@ function DagplanView({
                     opacity: isTipStop ? 0.8 : 1,
                   }}
                 >
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <div className="flex items-center gap-2">
-                      {isNow && !isTipStop && <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>Nu</span>}
-                      {isTipStop && <span className="text-[10px] font-semibold" style={{ color: '#A8937A' }}>💡 Tip</span>}
+                  {/* Travel time from previous stop, shown inside the card */}
+                  {travelMins !== null && (
+                    <div className="flex items-center gap-1 mb-2 pb-2" style={{ borderBottom: '1px solid #E4D9C8', opacity: 0.7 }}>
+                      <span className="material-symbols-outlined" style={{ color: '#A8937A', fontSize: 13 }}>directions_car</span>
+                      <span className="text-[11px] font-medium" style={{ color: '#A8937A' }}>{formatTravelTime(travelMins)} rijden</span>
                     </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    {isTipStop
+                      ? <span className="text-[10px] font-semibold" style={{ color: '#A8937A' }}>💡 Tip</span>
+                      : <span />
+                    }
                     {hasInfo && (
                       <button onClick={() => onOpenInfo(stop.uitjeId!)} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#F0E9DA' }} aria-label="Meer info">
                         <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>info</span>
                       </button>
                     )}
                   </div>
-                  <h3 className="font-bold text-sm mt-0.5" style={{ color: isMainDest ? 'oklch(57% 0.14 40)' : '#2C2316' }}>{stop.name}</h3>
+                  <h3 className="font-bold text-sm" style={{ color: isMainDest ? 'oklch(57% 0.14 40)' : '#2C2316' }}>{stop.name}</h3>
                   {stop.description && <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">{stop.description}</p>}
                   {stop.tip && <p className="text-xs mt-2 flex items-center gap-1" style={{ color: 'oklch(65% 0.10 218)' }}><span className="material-symbols-outlined text-xs">tips_and_updates</span>{stop.tip}</p>}
                   {stop.mapsUrl && (
@@ -1414,22 +1432,20 @@ function DagplanView({
           )
         })}
 
-        {/* Travel time to home */}
-        {dayPlan.stops.length > 0 && dayPlan.stops[dayPlan.stops.length - 1].coords && (() => {
-          const lastCoords = dayPlan.stops[dayPlan.stops.length - 1].coords!
-          const mins = estimateTravelMinutes(lastCoords, baseCoords)
-          return (
-            <div className="flex items-center gap-1.5 px-1 py-1.5 mb-1" style={{ opacity: 0.65 }}>
-              <span className="material-symbols-outlined" style={{ color: '#A8937A', fontSize: 14 }}>directions_car</span>
-              <span className="text-xs font-medium" style={{ color: '#A8937A' }}>{formatTravelTime(mins)} rijden</span>
-            </div>
-          )
-        })()}
-
-        {/* Thuiskomst */}
+        {/* Thuiskomst — travel time from last stop shown inside the card */}
         <div className="relative mb-4">
           <div className="absolute z-10" style={{ left: -22, top: 4, width: 14, height: 14, borderRadius: '50%', background: 'oklch(58% 0.10 148)', border: '2.5px solid oklch(58% 0.10 148)' }} />
           <div className="rounded-2xl p-4" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.35)' }}>
+            {dayPlan.stops.length > 0 && dayPlan.stops[dayPlan.stops.length - 1].coords && (() => {
+              const lastCoords = dayPlan.stops[dayPlan.stops.length - 1].coords!
+              const mins = estimateTravelMinutes(lastCoords, baseCoords)
+              return (
+                <div className="flex items-center gap-1 mb-2 pb-2" style={{ borderBottom: '1px solid oklch(58% 0.10 148 / 0.3)', opacity: 0.7 }}>
+                  <span className="material-symbols-outlined" style={{ color: 'oklch(40% 0.08 148)', fontSize: 13 }}>directions_car</span>
+                  <span className="text-[11px] font-medium" style={{ color: 'oklch(40% 0.08 148)' }}>{formatTravelTime(mins)} rijden</span>
+                </div>
+              )
+            })()}
             <p className="text-xs font-bold mb-0.5" style={{ color: 'oklch(40% 0.08 148)' }}>🏠 Thuiskomst</p>
             <h3 className="font-bold text-sm" style={{ color: 'oklch(35% 0.08 148)' }}>Les Escaliers des Combes</h3>
           </div>
