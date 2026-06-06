@@ -26,38 +26,21 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
-// Uitjes that can be a "main destination of the day" (not food/shop/bakery/markt)
-const DESTINATION_UITJES = uitjes.filter(u =>
-  (u.type === 'culture' || u.type === 'entertainment' || u.type === 'nature') && !u.marktDag
-)
-
-type Phase = 'destination' | 'select' | 'confirm' | 'edit' | 'plan'
+type Phase = 'select' | 'confirm' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
 interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
 
-function getTodayDateStr() {
-  return getParisDateString()
-}
-
-function getTomorrowDateStr() {
-  return getParisDateString(1)
-}
-
+function getTodayDateStr() { return getParisDateString() }
+function getTomorrowDateStr() { return getParisDateString(1) }
 function getTodayMarkten() {
-  const todayNaam = getParisWeekdayName()
-  return marktdagen.filter(m => m.dag === todayNaam)
+  return marktdagen.filter(m => m.dag === getParisWeekdayName())
 }
-
 function isTodayMarkt(uitje: Uitje): boolean {
   if (!uitje.marktDag) return false
-  const todayNaam = getParisWeekdayName()
-  return uitje.marktDag.split(',').map(d => d.trim()).includes(todayNaam)
+  return uitje.marktDag.split(',').map(d => d.trim()).includes(getParisWeekdayName())
 }
-
-function isAfter17Paris(): boolean {
-  return isAfterParisHour(17)
-}
+function isAfter17Paris(): boolean { return isAfterParisHour(17) }
 
 function haversineKm(a: [number, number], b: [number, number]): number {
   const R = 6371
@@ -67,12 +50,11 @@ function haversineKm(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
 
-function getTodayBaseCoords(): [number, number] | null {
+function getTodayBaseCoords(): [number, number] {
   const today = getParisDateString()
   const entry = reiskalender[today]
-  if (!entry) return null
-  if (entry.type === 'vakantie' || entry.type === 'verblijf') return entry.coords
-  return null
+  if (entry && (entry.type === 'vakantie' || entry.type === 'verblijf')) return entry.coords
+  return HOME_COORDS
 }
 
 function getRainWarning(weather: WeatherData | null): string | null {
@@ -86,10 +68,7 @@ function getRainWarning(weather: WeatherData | null): string | null {
 
 function buildGoogleMapsUrl(ids: string[]): string {
   const base = `${HOME_COORDS[0]},${HOME_COORDS[1]}`
-  const stops = ids
-    .map(id => uitjes.find(u => u.id === id))
-    .filter(Boolean)
-    .map(u => `${u!.coords[0]},${u!.coords[1]}`)
+  const stops = ids.map(id => uitjes.find(u => u.id === id)).filter(Boolean).map(u => `${u!.coords[0]},${u!.coords[1]}`)
   if (stops.length === 0) return `https://www.google.com/maps/search/?api=1&query=Les+Escaliers+Porte-du-Quercy`
   return `https://www.google.com/maps/dir/${base}/${stops.join('/')}/${base}`
 }
@@ -100,14 +79,16 @@ function sortByRoute(stops: Uitje[], destinationId: string): Uitje[] {
   if (!dest) return stops
   const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
   const lenSq = rv[0] ** 2 + rv[1] ** 2
-  const proj = (u: Uitje) => {
+  const proj = (u: Uitje): number => {
     const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
-    return (v[0] * rv[0] + v[1] * rv[1]) / lenSq
+    return lenSq > 0 ? (v[0] * rv[0] + v[1] * rv[1]) / lenSq : 0
   }
-  return [...others.sort((a, b) => proj(a) - proj(b)), dest]
+  // On-route stops first (home→destination order), off-route last (visit on return)
+  const onRoute = others.filter(u => proj(u) >= -0.1).sort((a, b) => proj(a) - proj(b))
+  const offRoute = others.filter(u => proj(u) < -0.1)
+  return [...onRoute, dest, ...offRoute]
 }
 
-// Returns route projection (0 = home, 1 = destination) and perpendicular ratio
 function getRouteInfo(stop: Uitje, destinationId: string): { proj: number; perpRatio: number } {
   const dest = uitjes.find(u => u.id === destinationId)
   if (!dest) return { proj: 0, perpRatio: 0 }
@@ -121,7 +102,6 @@ function getRouteInfo(stop: Uitje, destinationId: string): { proj: number; perpR
   return { proj, perpRatio }
 }
 
-// Returns a warning label if stop is not on the route to destination
 function getOffRouteLabel(stop: Uitje, destinationId: string | null): string | null {
   if (!destinationId || stop.id === destinationId) return null
   const { proj, perpRatio } = getRouteInfo(stop, destinationId)
@@ -146,29 +126,10 @@ function buildLocalPlan(ids: string[], destinationId: string | null): DayPlan {
   return { stops: planStops, checklist: [] }
 }
 
-async function getVisitedNames(): Promise<string[]> {
-  try {
-    const res = await fetch('/api/diary')
-    if (!res.ok) return []
-    const data: Array<{ plan_text?: string }> = await res.json()
-    const names: string[] = []
-    data.forEach(e => {
-      if (!e.plan_text) return
-      try {
-        const plan = typeof e.plan_text === 'string' && e.plan_text.startsWith('{')
-          ? JSON.parse(e.plan_text) : null
-        if (plan?.stops) plan.stops.forEach((s: { name: string }) => names.push(s.name))
-      } catch { /* ignore */ }
-    })
-    return names
-  } catch { return [] }
-}
-
 export default function VandaagPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
-  const [phase, setPhase] = useState<Phase>('destination')
+  const [phase, setPhase] = useState<Phase>('select')
   const [mainDestinationId, setMainDestinationId] = useState<string | null>(null)
-  const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [activeCatTab, setActiveCatTab] = useState<string>(CATEGORIES[0].value)
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null)
@@ -180,19 +141,13 @@ export default function VandaagPage() {
   const [tomorrowBasketIds, setTomorrowBasketIds] = useState<string[]>([])
   const [tomorrowPlan, setTomorrowPlan] = useState<DayPlan | null>(null)
   const [tomorrowPlanning, setTomorrowPlanning] = useState(false)
-
-  // Location
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null)
-
-  // Sluit dag af
   const [showSluitAf, setShowSluitAf] = useState(false)
   const [followedPlan, setFollowedPlan] = useState<boolean | null>(null)
   const [sluitActualText, setSluitActualText] = useState('')
   const [sluitMoodEmoji, setSluitMoodEmoji] = useState<string | null>(null)
   const [sluitSaving, setSluitSaving] = useState(false)
   const [sluitDone, setSluitDone] = useState(false)
-
-  // Info modal
   const [infoUitjeId, setInfoUitjeId] = useState<string | null>(null)
 
   const today = getTodayDateStr()
@@ -203,7 +158,6 @@ export default function VandaagPage() {
   const vandaagMarkten = getTodayMarkten()
   const after17 = isAfter17Paris()
   const vandaagMarktUitjeIds = uitjes.filter(u => u.marktDag && isTodayMarkt(u)).map(u => u.id)
-
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
@@ -212,31 +166,27 @@ export default function VandaagPage() {
 
     const saved = localStorage.getItem('dagplan_basket')
     if (saved) setBasketIds(JSON.parse(saved))
-
     const savedDest = localStorage.getItem('dagplan_destination')
     if (savedDest) setMainDestinationId(savedDest)
 
     fetch('/api/diary')
       .then(r => r.json())
       .then((data: Array<{ date: string; plan_text?: string; actual_text?: string; mood_emoji?: string }>) => {
-        const todayEntry = data.find(e => e.date === today)
-        if (todayEntry?.plan_text) {
+        const todayDiary = data.find(e => e.date === today)
+        if (todayDiary?.plan_text) {
           try {
-            const plan = typeof todayEntry.plan_text === 'string' && todayEntry.plan_text.startsWith('{')
-              ? JSON.parse(todayEntry.plan_text) : null
+            const plan = typeof todayDiary.plan_text === 'string' && todayDiary.plan_text.startsWith('{')
+              ? JSON.parse(todayDiary.plan_text) : null
             if (plan?.stops) { setDayPlan(plan); setPhase('plan') }
           } catch { /* geen plan */ }
         }
-        // Restore "Sluit dag af" state if already filled in
-        if (todayEntry?.actual_text || todayEntry?.mood_emoji) {
-          setSluitDone(true)
-        }
+        if (todayDiary?.actual_text || todayDiary?.mood_emoji) setSluitDone(true)
 
-        const tomorrowEntry = data.find(e => e.date === tomorrow)
-        if (tomorrowEntry?.plan_text) {
+        const tomorrowDiary = data.find(e => e.date === tomorrow)
+        if (tomorrowDiary?.plan_text) {
           try {
-            const plan = typeof tomorrowEntry.plan_text === 'string' && tomorrowEntry.plan_text.startsWith('{')
-              ? JSON.parse(tomorrowEntry.plan_text) : null
+            const plan = typeof tomorrowDiary.plan_text === 'string' && tomorrowDiary.plan_text.startsWith('{')
+              ? JSON.parse(tomorrowDiary.plan_text) : null
             if (plan?.stops) setTomorrowPlan(plan)
           } catch { /* geen plan */ }
         }
@@ -245,18 +195,25 @@ export default function VandaagPage() {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         pos => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-        () => { /* permission denied or error */ },
+        () => {},
         { enableHighAccuracy: false, timeout: 10000 }
       )
     }
   }, [])
 
-  const weatherDesc = weather
-    ? `${wmoToEmoji(weather.current.weathercode)} ${Math.round(weather.current.temperature_2m)}°C — ${wmoToDescription(weather.current.weathercode)}`
-    : 'Weerbericht laden…'
-
-  const toggleCat = (val: string) => {
-    setSelectedCats(prev => prev.includes(val) ? prev.filter(c => c !== val) : [...prev, val])
+  const setDestination = (id: string | null) => {
+    setMainDestinationId(id)
+    if (id) {
+      localStorage.setItem('dagplan_destination', id)
+      setBasketIds(prev => {
+        if (prev.includes(id)) return prev
+        const next = [...prev, id]
+        localStorage.setItem('dagplan_basket', JSON.stringify(next))
+        return next
+      })
+    } else {
+      localStorage.removeItem('dagplan_destination')
+    }
   }
 
   const toggleBasket = (id: string) => {
@@ -269,24 +226,6 @@ export default function VandaagPage() {
 
   const toggleTomorrowBasket = (id: string) => {
     setTomorrowBasketIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  const goToSelect = () => {
-    setActiveCatTab(selectedCats[0] || CATEGORIES[0].value)
-    setPhase('select')
-  }
-
-  const handleDestinationChosen = (destId: string) => {
-    setMainDestinationId(destId)
-    localStorage.setItem('dagplan_destination', destId)
-    // Add destination to basket if not already there
-    setBasketIds(prev => {
-      if (prev.includes(destId)) return prev
-      const next = [...prev, destId]
-      localStorage.setItem('dagplan_basket', JSON.stringify(next))
-      return next
-    })
-    setPhase('select')
   }
 
   const handlePlan = async (forDate: string, ids: string[], destinationId: string | null = null) => {
@@ -328,11 +267,7 @@ export default function VandaagPage() {
       await fetch('/api/diary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: today,
-          actual_text: actualText,
-          mood_emoji: sluitMoodEmoji,
-        }),
+        body: JSON.stringify({ date: today, actual_text: actualText, mood_emoji: sluitMoodEmoji }),
       })
       setSluitDone(true)
       setShowSluitAf(false)
@@ -341,8 +276,7 @@ export default function VandaagPage() {
   }
 
   const reset = () => {
-    setPhase('destination')
-    setSelectedCats([])
+    setPhase('select')
     setBasketIds([])
     setMainDestinationId(null)
     setActiveCatTab(CATEGORIES[0].value)
@@ -366,9 +300,8 @@ export default function VandaagPage() {
   const handleAddStopReturn = () => {
     const newIds = basketIds.filter(id => !basketSnapshot.includes(id))
     if (newIds.length > 0 && editPlan) {
-      const existingTimes = editPlan.stops.map(s => s.time)
       const allSlots = ['9:30', '11:00', '12:30', '14:30', '16:00', '17:00']
-      const usedSlots = new Set(existingTimes)
+      const usedSlots = new Set(editPlan.stops.map(s => s.time))
       const freeSlots = allSlots.filter(s => !usedSlots.has(s))
       const newStops: DayPlanStop[] = newIds.map((id, i) => {
         const u = uitjes.find(u => u.id === id)
@@ -398,7 +331,6 @@ export default function VandaagPage() {
 
   return (
     <div className="px-4 pt-5 pb-28">
-      {/* Journal header */}
       <div className="mb-4">
         <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
           Notre Voyage
@@ -408,19 +340,11 @@ export default function VandaagPage() {
 
       <WeatherCard weather={weather} />
 
-      {/* In de buurt — op vakantiedagen met locatie */}
       {userLocation && !isReisdag && <NearMeCard location={userLocation} />}
 
-      {/* Vertreklijst banner — vóór 13 juni */}
       {showVertreklijst && (
-        <a
-          href="/vertreklijst"
-          className="flex items-center gap-3 rounded-2xl p-4 mb-4 shadow-blue"
-          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)', textDecoration: 'none' }}
-        >
-          <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(40% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>
-            checklist
-          </span>
+        <a href="/vertreklijst" className="flex items-center gap-3 rounded-2xl p-4 mb-4 shadow-blue" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)', textDecoration: 'none' }}>
+          <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(40% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>checklist</span>
           <div className="flex-1">
             <p className="font-semibold text-sm" style={{ color: 'oklch(30% 0.10 148)' }}>Vertreklijst nog niet compleet?</p>
             <p className="text-xs" style={{ color: 'oklch(40% 0.10 148)' }}>Check alles vóór de heenreis op 12 juni →</p>
@@ -429,16 +353,14 @@ export default function VandaagPage() {
         </a>
       )}
 
-      {/* Regenmelding */}
-      {rainWarning && (phase === 'destination' || phase === 'select') && (
+      {rainWarning && phase === 'select' && (
         <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)' }}>
           <span className="material-symbols-outlined text-base mt-0.5" style={{ color: 'oklch(65% 0.10 218)' }}>water_drop</span>
           <p className="text-sm" style={{ color: '#2C2316' }}>{rainWarning}</p>
         </div>
       )}
 
-      {/* Marktdag banner */}
-      {vandaagMarkten.length > 0 && (phase === 'destination' || phase === 'select') && (
+      {vandaagMarkten.length > 0 && phase === 'select' && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
           <div className="flex items-start gap-2 mb-2">
             <span className="text-xl">🛒</span>
@@ -469,12 +391,10 @@ export default function VandaagPage() {
         </div>
       )}
 
-      {/* Reisdag modus */}
       {todayEntry?.type === 'reisdag' && (
         <ReisDagView entry={todayEntry} userLocation={userLocation} />
       )}
 
-      {/* Verblijf Chartres */}
       {todayEntry?.type === 'verblijf' && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.3)' }}>
           <p className="text-sm font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
@@ -483,7 +403,6 @@ export default function VandaagPage() {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
           <span className="material-symbols-outlined text-base mt-0.5" style={{ color: '#EF4444' }}>error</span>
@@ -497,26 +416,18 @@ export default function VandaagPage() {
         </div>
       )}
 
-      {/* Wizard — niet op reisdagen */}
       {!isReisdag && (
         <>
-          {phase === 'destination' && (
-            <DestinationPhase
-              onChoose={handleDestinationChosen}
-              onSkip={() => { setPhase('select') }}
-              onOpenInfo={setInfoUitjeId}
-            />
-          )}
-
           {phase === 'select' && (
             <SelectPhase
               activeCatTab={activeCatTab}
               setActiveCatTab={setActiveCatTab}
               basketIds={basketIds}
               mainDestinationId={mainDestinationId}
+              onSetDestination={setDestination}
               onToggleBasket={toggleBasket}
               addStopMode={addStopMode}
-              onBack={addStopMode ? handleAddStopReturn : () => setPhase('destination')}
+              onBack={addStopMode ? handleAddStopReturn : undefined}
               onConfirm={addStopMode ? handleAddStopReturn : () => setPhase('confirm')}
               onOpenInfo={setInfoUitjeId}
             />
@@ -574,16 +485,11 @@ export default function VandaagPage() {
         </>
       )}
 
-      {/* Info modal — uitje details */}
       {infoUitjeId && (
-        <UitjeInfoModal
-          uitjeId={infoUitjeId}
-          onClose={() => setInfoUitjeId(null)}
-        />
+        <UitjeInfoModal uitjeId={infoUitjeId} onClose={() => setInfoUitjeId(null)} />
       )}
 
-      {/* Plan morgen — na 17:00, toon onderaan */}
-      {after17 && !isReisdag && (phase === 'plan' || phase === 'destination') && (
+      {after17 && !isReisdag && (phase === 'plan' || phase === 'select') && (
         <PlanMorgenSection
           tomorrowEntry={tomorrowEntry}
           tomorrowPlan={tomorrowPlan}
@@ -639,26 +545,10 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   const [tussenstopLoading, setTussenstopLoading] = useState(false)
 
   const accommodations: Record<string, { naam: string; adres: string; gmaps: string }> = {
-    'Atelier des Sens 89': {
-      naam: 'Atelier des Sens 89',
-      adres: 'Route du Moulin Neuf, 89270 Venoy',
-      gmaps: 'https://www.google.com/maps/search/?api=1&query=Atelier+des+Sens+89+Venoy',
-    },
-    'Les Escaliers': {
-      naam: 'Les Escaliers de La Combe',
-      adres: 'La Combe, 82240 Porte-du-Quercy',
-      gmaps: 'https://www.google.com/maps/search/?api=1&query=Les+Escaliers+Porte-du-Quercy',
-    },
-    'Chartres': {
-      naam: 'Hotel Henri IV',
-      adres: "31 Rue du Soleil d'Or, 28000 Chartres",
-      gmaps: 'https://www.google.com/maps/search/?api=1&query=Hotel+Henri+IV+Chartres',
-    },
-    'Amersfoort': {
-      naam: 'Thuis in Amersfoort',
-      adres: 'Amersfoort',
-      gmaps: 'https://www.google.com/maps/search/?api=1&query=Amersfoort',
-    },
+    'Atelier des Sens 89': { naam: 'Atelier des Sens 89', adres: 'Route du Moulin Neuf, 89270 Venoy', gmaps: 'https://www.google.com/maps/search/?api=1&query=Atelier+des+Sens+89+Venoy' },
+    'Les Escaliers': { naam: 'Les Escaliers de La Combe', adres: 'La Combe, 82240 Porte-du-Quercy', gmaps: 'https://www.google.com/maps/search/?api=1&query=Les+Escaliers+Porte-du-Quercy' },
+    'Chartres': { naam: 'Hotel Henri IV', adres: "31 Rue du Soleil d'Or, 28000 Chartres", gmaps: 'https://www.google.com/maps/search/?api=1&query=Hotel+Henri+IV+Chartres' },
+    'Amersfoort': { naam: 'Thuis in Amersfoort', adres: 'Amersfoort', gmaps: 'https://www.google.com/maps/search/?api=1&query=Amersfoort' },
   }
   const overnachting = accommodations[entry.naar]
 
@@ -670,10 +560,7 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   }
   const fromCoord = routeCoords[entry.van] || ''
   const toCoord = routeCoords[entry.naar] || ''
-  const routeUrl = fromCoord && toCoord
-    ? `https://www.google.com/maps/dir/${fromCoord}/${toCoord}`
-    : ''
-
+  const routeUrl = fromCoord && toCoord ? `https://www.google.com/maps/dir/${fromCoord}/${toCoord}` : ''
   const tussenstops = entry.route.replace('Via ', '').split(', ')
 
   const zoekTussenstop = async () => {
@@ -684,46 +571,24 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
       const res = await fetch('/api/tussenstop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          van: entry.van,
-          naar: entry.naar,
-          route: entry.route,
-          lat: userLocation.lat,
-          lon: userLocation.lon,
-        }),
+        body: JSON.stringify({ van: entry.van, naar: entry.naar, route: entry.route, lat: userLocation.lat, lon: userLocation.lon }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setTussenstop(data)
-      }
+      if (res.ok) setTussenstop(await res.json())
     } catch { /* ignore */ }
     setTussenstopLoading(false)
   }
 
   return (
     <div className="mb-5">
-      <div
-        className="rounded-2xl p-5 mb-4"
-        style={{ background: 'linear-gradient(135deg, #2C2316, oklch(40% 0.12 40))', color: 'white' }}
-      >
+      <div className="rounded-2xl p-5 mb-4" style={{ background: 'linear-gradient(135deg, #2C2316, oklch(40% 0.12 40))', color: 'white' }}>
         <div className="flex items-center gap-2 mb-1">
           <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>directions_car</span>
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {entry.label}
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.6)' }}>{entry.label}</p>
         </div>
-        <h2 className="text-2xl font-medium leading-tight mb-1" style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic' }}>
-          Reisdag
-        </h2>
+        <h2 className="text-2xl font-medium leading-tight mb-1" style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic' }}>Reisdag</h2>
         <p className="text-lg font-semibold">{entry.van} → {entry.naar}</p>
         {routeUrl && (
-          <a
-            href={routeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
-            style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
-          >
+          <a href={routeUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>
             <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>map</span>
             Open route in Google Maps
           </a>
@@ -731,118 +596,52 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
       </div>
 
       {userLocation && (
-        <div
-          className="rounded-2xl p-3 mb-4 flex items-center gap-3"
-          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
-        >
+        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}>
           <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>my_location</span>
           <div className="flex-1">
             <p className="text-xs font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Huidige locatie</p>
-            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>
-              {userLocation.lat.toFixed(4)}°N, {userLocation.lon.toFixed(4)}°E
-            </p>
+            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>{userLocation.lat.toFixed(4)}°N, {userLocation.lon.toFixed(4)}°E</p>
           </div>
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${userLocation.lat},${userLocation.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-semibold"
-            style={{ color: 'oklch(58% 0.10 148)' }}
-          >
-            Maps →
-          </a>
+          <a href={`https://www.google.com/maps/search/?api=1&query=${userLocation.lat},${userLocation.lon}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(58% 0.10 148)' }}>Maps →</a>
         </div>
       )}
 
       {userLocation && (
         <div className="mb-5">
           <div className="flex gap-2 mb-3">
-            {[
-              { icon: '⛽', label: 'Tanken', query: 'station essence' },
-              { icon: '🍽️', label: 'Eten', query: 'restaurant' },
-              { icon: '🏘️', label: 'Dorpje', query: 'village' },
-            ].map(a => (
-              <a
-                key={a.query}
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.query)}&near=${userLocation.lat},${userLocation.lon}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3"
-                style={{ background: '#FAF7F0', border: '2px solid #E4D9C8' }}
-              >
+            {[{ icon: '⛽', label: 'Tanken', query: 'station essence' }, { icon: '🍽️', label: 'Eten', query: 'restaurant' }, { icon: '🏘️', label: 'Dorpje', query: 'village' }].map(a => (
+              <a key={a.query} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.query)}&near=${userLocation.lat},${userLocation.lon}`} target="_blank" rel="noopener noreferrer" className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3" style={{ background: '#FAF7F0', border: '2px solid #E4D9C8' }}>
                 <span className="text-xl">{a.icon}</span>
                 <span className="text-xs font-semibold" style={{ color: '#6B5A3E' }}>{a.label}</span>
               </a>
             ))}
           </div>
-          <button
-            onClick={zoekTussenstop}
-            disabled={tussenstopLoading}
-            className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-3"
-            style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}
-          >
-            {tussenstopLoading ? (
-              <>
-                <span className="material-symbols-outlined text-base animate-spin">refresh</span>
-                Tussenstop zoeken…
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>place</span>
-                Tussenstop zoeken
-              </>
-            )}
+          <button onClick={zoekTussenstop} disabled={tussenstopLoading} className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-3" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}>
+            {tussenstopLoading ? <><span className="material-symbols-outlined text-base animate-spin">refresh</span>Tussenstop zoeken…</> : <><span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>place</span>Tussenstop zoeken</>}
           </button>
           {tussenstop && (
-            <div
-              className="rounded-2xl p-4 shadow-blue"
-              style={{ background: '#FAF7F0', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>
-                  Suggestie
-                </span>
-              </div>
+            <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
+              <span className="text-sm font-bold rounded-full px-2 py-0.5 mb-2 inline-block" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>Suggestie</span>
               <p className="font-semibold text-on-surface">{tussenstop.naam}</p>
               <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">{tussenstop.beschrijving}</p>
-              <a
-                href={tussenstop.gmaps}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold"
-                style={{ color: 'oklch(65% 0.10 218)' }}
-              >
-                <span className="material-symbols-outlined text-sm">map</span>
-                Navigeer →
+              <a href={tussenstop.gmaps} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                <span className="material-symbols-outlined text-sm">map</span>Navigeer →
               </a>
             </div>
           )}
         </div>
       )}
 
-      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-        Route van vandaag
-      </div>
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Route van vandaag</div>
       <div className="flex flex-col gap-2 mb-5">
         {[entry.van, ...tussenstops, entry.naar].map((stop, i, arr) => (
           <div key={i} className="flex items-center gap-3">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
-              style={{ background: i === 0 || i === arr.length - 1 ? 'oklch(57% 0.14 40)' : '#A8937A' }}
-            >
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white" style={{ background: i === 0 || i === arr.length - 1 ? 'oklch(57% 0.14 40)' : '#A8937A' }}>
               {i === 0 ? '🏠' : i === arr.length - 1 ? '🏁' : i}
             </div>
-            <div
-              className="flex-1 rounded-xl px-3 py-2"
-              style={{
-                background: i === 0 || i === arr.length - 1 ? 'oklch(93% 0.05 40)' : '#FAF7F0',
-                border: '1px solid #E4D9C8',
-              }}
-            >
+            <div className="flex-1 rounded-xl px-3 py-2" style={{ background: i === 0 || i === arr.length - 1 ? 'oklch(93% 0.05 40)' : '#FAF7F0', border: '1px solid #E4D9C8' }}>
               <p className="text-sm font-semibold text-on-surface">{stop}</p>
-              {i > 0 && i < arr.length - 1 && (
-                <p className="text-xs text-on-surface-variant">Tussenstop</p>
-              )}
+              {i > 0 && i < arr.length - 1 && <p className="text-xs text-on-surface-variant">Tussenstop</p>}
             </div>
           </div>
         ))}
@@ -850,29 +649,14 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
 
       {overnachting && (
         <>
-          <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-            {entry.naar === 'Amersfoort' ? 'Bestemming' : 'Overnachting'}
-          </div>
-          <div
-            className="rounded-2xl p-4 shadow-blue"
-            style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-          >
+          <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>{entry.naar === 'Amersfoort' ? 'Bestemming' : 'Overnachting'}</div>
+          <div className="rounded-2xl p-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>
-                {entry.naar === 'Amersfoort' ? 'home' : 'hotel'}
-              </span>
+              <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>{entry.naar === 'Amersfoort' ? 'home' : 'hotel'}</span>
               <div>
                 <h3 className="font-semibold text-on-surface">{overnachting.naam}</h3>
                 <p className="text-xs text-on-surface-variant mt-0.5">{overnachting.adres}</p>
-                <a
-                  href={overnachting.gmaps}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold mt-2 block"
-                  style={{ color: 'oklch(65% 0.10 218)' }}
-                >
-                  Google Maps →
-                </a>
+                <a href={overnachting.gmaps} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold mt-2 block" style={{ color: 'oklch(65% 0.10 218)' }}>Google Maps →</a>
               </div>
             </div>
           </div>
@@ -882,112 +666,152 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   )
 }
 
-// Step 1: Pick the main destination of the day
-function DestinationPhase({
-  onChoose,
-  onSkip,
+// Uitje card used inside SelectPhase
+function UitjeSelectCard({
+  uitje,
+  inBasket,
+  isDestination,
+  hasDestination,
+  mainDestinationId,
+  onSetDestination,
+  onToggleBasket,
   onOpenInfo,
+  catColor,
 }: {
-  onChoose: (id: string) => void
-  onSkip: () => void
+  uitje: Uitje
+  inBasket: boolean
+  isDestination: boolean
+  hasDestination: boolean
+  mainDestinationId: string | null
+  onSetDestination: (id: string | null) => void
+  onToggleBasket: (id: string) => void
   onOpenInfo: (id: string) => void
+  catColor: string
 }) {
-  const [selected, setSelected] = useState<string | null>(null)
-  const baseCoords = getTodayBaseCoords()
-  const destinations = DESTINATION_UITJES.filter(u =>
-    !baseCoords || haversineKm(u.coords, baseCoords) <= 250
-  )
-
-  const typeIcon: Record<string, string> = {
-    culture: 'castle',
-    entertainment: 'attractions',
-    nature: 'park',
-  }
+  const isMarktVandaag = isTodayMarkt(uitje)
+  const offRouteLabel = hasDestination && !isDestination ? getOffRouteLabel(uitje, mainDestinationId) : null
 
   return (
-    <div>
-      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        Wat is jullie bestemming<br />vandaag?
-      </h2>
-      <p className="text-xs text-on-surface-variant mb-5">
-        Kies je hoofdbestemming. Op basis daarvan sorteren we de rest van de dag logisch voor je.
-      </p>
-
-      <div className="flex flex-col gap-3 mb-24">
-        {destinations.map(u => {
-          const isSel = selected === u.id
-          return (
-            <button
-              key={u.id}
-              onClick={() => setSelected(prev => prev === u.id ? null : u.id)}
-              className="rounded-2xl p-4 flex items-start gap-3 shadow-blue text-left w-full transition-all"
-              style={{
-                background: isSel ? 'oklch(93% 0.05 40)' : '#FAF7F0',
-                border: `2px solid ${isSel ? 'oklch(57% 0.14 40)' : '#E4D9C8'}`,
-              }}
-            >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                style={{ background: isSel ? 'oklch(57% 0.14 40)' : '#F0E9DA' }}
-              >
-                <span
-                  className="material-symbols-outlined text-lg"
-                  style={{ color: isSel ? 'white' : '#6B5A3E', fontVariationSettings: "'FILL' 1" }}
-                >
-                  {typeIcon[u.type] ?? 'place'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-on-surface">{u.name}</p>
-                  {isSel && (
-                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
-                      Bestemming
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-xs text-on-surface-variant">🚗 {u.drive}</span>
-                </div>
-                <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">{u.desc}</p>
-              </div>
-              <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }}
-                  className="w-7 h-7 rounded-full flex items-center justify-center"
-                  style={{ background: '#F0E9DA' }}
-                  aria-label="Meer info"
-                >
-                  <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>info</span>
-                </button>
-              </div>
-            </button>
-          )
-        })}
+    <div
+      className="rounded-2xl p-5 shadow-blue"
+      style={{
+        background: isDestination ? 'oklch(93% 0.05 40)' : inBasket ? `${catColor}0D` : '#FAF7F0',
+        border: `2px solid ${isDestination ? 'oklch(57% 0.14 40)' : inBasket ? catColor : '#E4D9C8'}`,
+      }}
+    >
+      {/* Title row */}
+      <div className="flex items-start gap-2 mb-2">
+        <button
+          onClick={() => onOpenInfo(uitje.id)}
+          className="flex-1 text-left"
+        >
+          <h3 className="text-xl font-bold text-on-surface leading-tight">{uitje.name}</h3>
+        </button>
+        <button
+          onClick={() => onOpenInfo(uitje.id)}
+          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+          style={{ background: '#F0E9DA' }}
+          aria-label="Meer info"
+        >
+          <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>info</span>
+        </button>
       </div>
 
-      {/* Fixed bottom */}
-      <div className="fixed bottom-20 inset-x-0 px-4 z-40">
-        <div className="max-w-md mx-auto flex flex-col gap-2">
-          {selected && (
+      {/* Badges */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
+          🚗 {uitje.drive}
+        </span>
+        {uitje.vegetarian && (
+          <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>
+            🌿 Vegetarisch
+          </span>
+        )}
+        {isMarktVandaag && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
+            🛒 Markt vandaag!
+          </span>
+        )}
+        {isDestination && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
+            📍 Jouw bestemming
+          </span>
+        )}
+        {offRouteLabel && (
+          <span
+            className="text-[10px] font-bold rounded-full px-2 py-0.5"
+            style={{
+              background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)',
+              color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)',
+            }}
+          >
+            {offRouteLabel === 'Andere richting' ? '↩' : '↗'} {offRouteLabel}
+          </span>
+        )}
+      </div>
+
+      <p className="text-sm text-on-surface-variant leading-relaxed mb-4">{uitje.desc}</p>
+
+      {/* Action buttons */}
+      {isDestination ? (
+        // This IS the destination
+        <button
+          onClick={() => onSetDestination(null)}
+          className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
+          style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
+        >
+          <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+          Bestemming — tik om te wijzigen
+        </button>
+      ) : !hasDestination ? (
+        // No destination chosen yet — invite to set one
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => onSetDestination(uitje.id)}
+            className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
+            style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
+          >
+            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+            Kies als bestemming
+          </button>
+          {inBasket ? (
             <button
-              onClick={() => onChoose(selected)}
-              className="w-full rounded-2xl py-4 text-white font-semibold text-base flex items-center justify-center gap-2 shadow-xl"
-              style={{ background: 'oklch(57% 0.14 40)', boxShadow: '0 4px 20px rgba(44,35,22,0.35)' }}
+              onClick={() => onToggleBasket(uitje.id)}
+              className="w-full rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-1.5"
+              style={{ background: `${catColor}15`, color: catColor, border: `1.5px solid ${catColor}` }}
             >
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
-              {uitjes.find(u => u.id === selected)?.name} als bestemming →
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+              Toegevoegd als extra stop
+            </button>
+          ) : (
+            <button
+              onClick={() => onToggleBasket(uitje.id)}
+              className="w-full rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-1.5"
+              style={{ background: '#F0E9DA', color: '#6B5A3E' }}
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              Voeg toe als extra stop
             </button>
           )}
-          <button
-            onClick={onSkip}
-            className="w-full rounded-2xl py-3 text-sm font-semibold"
-            style={{ background: 'rgba(255,255,255,0.9)', border: '2px solid #E4D9C8', color: '#A8937A', backdropFilter: 'blur(4px)' }}
-          >
-            Geen vaste bestemming — gewoon kijken
-          </button>
         </div>
-      </div>
+      ) : (
+        // Destination is set (but not this one)
+        <button
+          onClick={() => onToggleBasket(uitje.id)}
+          className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
+          style={
+            inBasket
+              ? { background: catColor, color: 'white' }
+              : { background: '#F0E9DA', color: catColor }
+          }
+        >
+          {inBasket ? (
+            <><span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Geselecteerd</>
+          ) : (
+            <><span className="material-symbols-outlined text-base">add_circle</span>Voeg toe aan dag</>
+          )}
+        </button>
+      )}
     </div>
   )
 }
@@ -997,6 +821,7 @@ function SelectPhase({
   setActiveCatTab,
   basketIds,
   mainDestinationId,
+  onSetDestination,
   onToggleBasket,
   addStopMode,
   onBack,
@@ -1007,6 +832,7 @@ function SelectPhase({
   setActiveCatTab: (v: string) => void
   basketIds: string[]
   mainDestinationId: string | null
+  onSetDestination: (id: string | null) => void
   onToggleBasket: (id: string) => void
   addStopMode: boolean
   onBack?: () => void
@@ -1017,68 +843,78 @@ function SelectPhase({
   const baseCoords = getTodayBaseCoords()
   const destination = mainDestinationId ? uitjes.find(u => u.id === mainDestinationId) : null
 
-  // Filter uitjes by category and distance
   const rawCatUitjes = uitjes
     .filter(activeCat.uitjeFilter)
-    .filter(u => !baseCoords || haversineKm(u.coords, baseCoords) <= 250)
+    .filter(u => haversineKm(u.coords, baseCoords) <= 150)
 
-  // Sort by route when destination is known: project onto route, destination last
+  // When destination is set: on-route items first (ascending proj), off-route last
   const catUitjes = mainDestinationId
     ? (() => {
         const dest = uitjes.find(u => u.id === mainDestinationId)
         if (!dest) return rawCatUitjes
         const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
         const lenSq = rv[0] ** 2 + rv[1] ** 2
-        const proj = (u: Uitje) => {
+        const proj = (u: Uitje): number => {
           const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
           return lenSq > 0 ? (v[0] * rv[0] + v[1] * rv[1]) / lenSq : 0
         }
-        return [...rawCatUitjes].sort((a, b) => proj(a) - proj(b))
+        const destInList = rawCatUitjes.find(u => u.id === mainDestinationId)
+        const others = rawCatUitjes.filter(u => u.id !== mainDestinationId)
+        const onRoute = others.filter(u => proj(u) >= -0.1).sort((a, b) => proj(a) - proj(b))
+        const offRoute = others.filter(u => proj(u) < -0.1)
+        return [...onRoute, ...(destInList ? [destInList] : []), ...offRoute]
       })()
     : rawCatUitjes
 
-  // Stops in basket but not the destination
-  const extraBasketCount = basketIds.filter(id => id !== mainDestinationId).length
+  const extraCount = basketIds.filter(id => id !== mainDestinationId).length
 
   return (
     <div>
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-sm font-semibold mb-4"
-          style={{ color: 'oklch(57% 0.14 40)' }}
-        >
+      {addStopMode && onBack && (
+        <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold mb-4" style={{ color: 'oklch(57% 0.14 40)' }}>
           <span className="material-symbols-outlined text-base">arrow_back</span>
-          {addStopMode ? 'Terug naar plan' : 'Bestemming kiezen'}
+          Terug naar plan
         </button>
       )}
 
-      {/* Chosen destination badge */}
+      {/* Destination banner — shows when a destination is selected */}
       {destination && !addStopMode && (
         <div
           className="rounded-2xl p-3 mb-4 flex items-center gap-3"
-          style={{ background: 'oklch(93% 0.05 40)', border: '2px solid oklch(57% 0.14 40 / 0.4)' }}
+          style={{ background: 'oklch(93% 0.05 40)', border: '2px solid oklch(57% 0.14 40 / 0.5)' }}
         >
-          <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>flag</span>
-          <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#A8937A' }}>Bestemming van vandaag</p>
-            <p className="font-semibold text-sm text-on-surface">{destination.name}</p>
+          <span className="material-symbols-outlined text-lg" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>flag</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#A8937A' }}>Bestemming van vandaag</p>
+            <p className="font-bold text-sm text-on-surface truncate">{destination.name}</p>
           </div>
-          <span className="text-xs text-on-surface-variant">🚗 {destination.drive}</span>
+          <span className="text-xs text-on-surface-variant flex-shrink-0">🚗 {destination.drive}</span>
+          <button
+            onClick={() => onSetDestination(null)}
+            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: '#F0E9DA' }}
+            aria-label="Bestemming wissen"
+          >
+            <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>close</span>
+          </button>
         </div>
       )}
 
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        {addStopMode ? 'Extra stop toevoegen' : 'Wat nog meer?'}
+        {addStopMode ? 'Extra stop toevoegen' : mainDestinationId ? 'Wat nog meer?' : 'Waar gaan jullie naartoe?'}
       </h2>
       <p className="text-xs text-on-surface-variant mb-4">
-        {mainDestinationId
-          ? 'Stops zijn gesorteerd op de route. Stops die niet logisch op de weg liggen worden gemarkeerd.'
-          : extraBasketCount === 0 ? 'Selecteer wat je vandaag wilt doen.' : `${extraBasketCount} extra stop${extraBasketCount > 1 ? 's' : ''} toegevoegd.`
+        {addStopMode
+          ? 'Kies een extra stop voor het plan.'
+          : mainDestinationId
+            ? extraCount > 0
+              ? `Bestemming gekozen + ${extraCount} extra stop${extraCount > 1 ? 's' : ''}. Stops zijn op route gesorteerd.`
+              : 'Bestemming gekozen — voeg extra stops toe of maak direct een dagplan.'
+            : 'Blader door de categorieën en kies je bestemming voor vandaag.'
         }
       </p>
 
-      {/* Categorie tabs */}
+      {/* Category tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-5" style={{ scrollbarWidth: 'none' }}>
         {CATEGORIES.map(cat => {
           const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id) && u.id !== mainDestinationId)
@@ -1097,137 +933,33 @@ function SelectPhase({
               <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>{cat.icon}</span>
               {cat.label}
               {hasSelection && (
-                <span
-                  className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
-                  style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: 'white' }}
-                >
-                  ✓
-                </span>
+                <span className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center" style={{ background: isActive ? 'rgba(255,255,255,0.3)' : cat.color, color: 'white' }}>✓</span>
               )}
             </button>
           )
         })}
       </div>
 
-      {/* Uitje kaarten */}
+      {/* Uitje cards */}
       <div className="flex flex-col gap-4 mb-24">
-        {catUitjes.map(u => {
-          const inBasket = basketIds.includes(u.id)
-          const isMainDest = u.id === mainDestinationId
-          const isMarktVandaag = isTodayMarkt(u)
-          const offRouteLabel = mainDestinationId && !isMainDest ? getOffRouteLabel(u, mainDestinationId) : null
-
-          return (
-            <div
-              key={u.id}
-              className="rounded-2xl p-5 shadow-blue"
-              style={{
-                background: isMainDest ? 'oklch(93% 0.05 40)' : inBasket ? `${activeCat.color}0D` : '#FAF7F0',
-                border: `2px solid ${isMainDest ? 'oklch(57% 0.14 40)' : inBasket ? activeCat.color : '#E4D9C8'}`,
-              }}
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-2 flex-wrap">
-                    <button
-                      onClick={() => onOpenInfo(u.id)}
-                      className="text-xl font-bold text-on-surface leading-tight text-left hover:underline"
-                    >
-                      {u.name}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                    <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
-                      🚗 {u.drive}
-                    </span>
-                    {u.vegetarian && (
-                      <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>
-                        🌿 Vegetarisch
-                      </span>
-                    )}
-                    {isMarktVandaag && (
-                      <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
-                        🛒 Markt vandaag!
-                      </span>
-                    )}
-                    {isMainDest && (
-                      <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
-                        📍 Bestemming
-                      </span>
-                    )}
-                    {offRouteLabel && (
-                      <span
-                        className="text-[10px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"
-                        style={{
-                          background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)',
-                          color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)',
-                        }}
-                      >
-                        {offRouteLabel === 'Andere richting' ? '↩' : '↗'} {offRouteLabel}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-sm text-on-surface-variant leading-relaxed mb-4">{u.desc}</p>
-
-              {(u.wiki || u.site || u.gmaps) && (
-                <div className="flex gap-3 mb-4 flex-wrap">
-                  {u.wiki && (
-                    <a href={u.wiki} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
-                      Wikipedia →
-                    </a>
-                  )}
-                  {u.site && (
-                    <a href={u.site} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
-                      Website →
-                    </a>
-                  )}
-                  <a href={u.gmaps} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
-                    Maps →
-                  </a>
-                </div>
-              )}
-
-              {isMainDest ? (
-                <div
-                  className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
-                  style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
-                >
-                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
-                  Hoofdbestemming
-                </div>
-              ) : (
-                <button
-                  onClick={() => onToggleBasket(u.id)}
-                  className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
-                  style={
-                    inBasket
-                      ? { background: activeCat.color, color: 'white' }
-                      : { background: '#F0E9DA', color: activeCat.color }
-                  }
-                >
-                  {inBasket ? (
-                    <>
-                      <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                      Geselecteerd
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-base">add_circle</span>
-                      Voeg toe
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          )
-        })}
+        {catUitjes.map(u => (
+          <UitjeSelectCard
+            key={u.id}
+            uitje={u}
+            inBasket={basketIds.includes(u.id)}
+            isDestination={u.id === mainDestinationId}
+            hasDestination={!!mainDestinationId}
+            mainDestinationId={mainDestinationId}
+            onSetDestination={onSetDestination}
+            onToggleBasket={onToggleBasket}
+            onOpenInfo={onOpenInfo}
+            catColor={activeCat.color}
+          />
+        ))}
       </div>
 
-      {/* Fixed bottom */}
-      {basketIds.length > 0 && (
+      {/* Fixed bottom CTA */}
+      {mainDestinationId && (
         <div className="fixed bottom-20 inset-x-0 px-4 z-40">
           <div className="max-w-md mx-auto">
             <button
@@ -1236,7 +968,10 @@ function SelectPhase({
               style={{ background: '#2C2316', boxShadow: '0 4px 20px rgba(44,35,22,0.35)' }}
             >
               <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
-              Naar overzicht ({basketIds.length} stop{basketIds.length > 1 ? 's' : ''}) →
+              {basketIds.length > 1
+                ? `Maak dagplan (${basketIds.length} stops) →`
+                : 'Maak dagplan →'
+              }
             </button>
           </div>
         </div>
@@ -1260,7 +995,6 @@ function ConfirmPhase({
   onReset: () => void
   onOpenInfo: (id: string) => void
 }) {
-  // Use mainDestinationId (pre-set), but still allow changing it here
   const [destinationId, setDestinationId] = useState<string | null>(mainDestinationId)
 
   const allStops = basketIds.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
@@ -1275,113 +1009,63 @@ function ConfirmPhase({
         Stops aanpassen
       </button>
 
-      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        Jouw dag
-      </h2>
+      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>Jouw dag</h2>
       <p className="text-xs text-on-surface-variant mb-4">
         {destinationId
-          ? 'Stops zijn op route geordend. Je kunt de bestemming nog aanpassen door op een andere stop te tikken.'
-          : 'Tik op een stop om die als bestemming van de dag te kiezen — de andere stops worden automatisch op de route geordend.'
+          ? 'Stops zijn op route geordend. Tik op een andere stop om de bestemming te wijzigen.'
+          : 'Tik op een stop om die als bestemming te kiezen — de andere stops worden dan op de route geordend.'
         }
       </p>
 
       <div className="flex flex-col gap-3 mb-5">
         <div className="flex items-center gap-3 px-1 py-1.5">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>
-            🏠
-          </div>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>🏠</div>
           <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.08 148)' }}>Les Escaliers (start &amp; thuiskomst)</p>
         </div>
 
         {sortedStops.map((u, i) => {
           const isDest = u.id === destinationId
-          const isMarktVandaag = isTodayMarkt(u)
           const offRouteLabel = destinationId && !isDest ? getOffRouteLabel(u, destinationId) : null
           return (
             <button
               key={u.id}
               onClick={() => setDestinationId(prev => prev === u.id ? null : u.id)}
               className="rounded-2xl p-4 flex items-start gap-3 shadow-blue text-left w-full transition-all"
-              style={{
-                background: isDest ? 'oklch(93% 0.05 40)' : '#FAF7F0',
-                border: `2px solid ${isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8'}`,
-              }}
+              style={{ background: isDest ? 'oklch(93% 0.05 40)' : '#FAF7F0', border: `2px solid ${isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8'}` }}
             >
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{ background: isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8', color: isDest ? 'white' : '#6B5A3E' }}
-              >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold" style={{ background: isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8', color: isDest ? 'white' : '#6B5A3E' }}>
                 {isDest ? '📍' : i + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <button
-                  onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }}
-                  className="font-semibold text-on-surface text-left hover:underline"
-                >
-                  {u.name}
-                </button>
+                <button onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }} className="font-semibold text-on-surface text-left hover:underline">{u.name}</button>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-on-surface-variant">🚗 {u.drive}</span>
-                  {u.vegetarian && <span className="text-xs text-on-surface-variant">🌿</span>}
-                  {isMarktVandaag && (
-                    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
-                      Markt!
-                    </span>
-                  )}
-                  {isDest && (
-                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
-                      Bestemming
-                    </span>
-                  )}
+                  {isTodayMarkt(u) && <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>Markt!</span>}
+                  {isDest && <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>Bestemming</span>}
                   {offRouteLabel && (
-                    <span
-                      className="text-[10px] font-bold rounded-full px-2 py-0.5"
-                      style={{
-                        background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)',
-                        color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)',
-                      }}
-                    >
+                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)', color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)' }}>
                       {offRouteLabel === 'Andere richting' ? '↩' : '↗'} {offRouteLabel}
                     </span>
                   )}
                 </div>
               </div>
-              <span
-                className="material-symbols-outlined text-xl flex-shrink-0 mt-0.5"
-                style={{ color: isDest ? 'oklch(57% 0.14 40)' : '#D4C4B0', fontVariationSettings: isDest ? "'FILL' 1" : "'FILL' 0" }}
-              >
-                flag
-              </span>
+              <span className="material-symbols-outlined text-xl flex-shrink-0 mt-0.5" style={{ color: isDest ? 'oklch(57% 0.14 40)' : '#D4C4B0', fontVariationSettings: isDest ? "'FILL' 1" : "'FILL' 0" }}>flag</span>
             </button>
           )
         })}
       </div>
 
-      <a
-        href={mapsUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 rounded-2xl p-3 mb-5 text-sm font-semibold"
-        style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)', color: 'oklch(65% 0.10 218)' }}
-      >
+      <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-2xl p-3 mb-5 text-sm font-semibold" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)', color: 'oklch(65% 0.10 218)' }}>
         <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>route</span>
         Bekijk route alvast op kaart →
       </a>
 
-      <button
-        onClick={() => onConfirm(sortedIds, destinationId)}
-        className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3"
-        style={{ background: 'oklch(57% 0.14 40)' }}
-      >
+      <button onClick={() => onConfirm(sortedIds, destinationId)} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3" style={{ background: 'oklch(57% 0.14 40)' }}>
         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
         Maak dagplan
       </button>
 
-      <button
-        onClick={onReset}
-        className="w-full rounded-2xl py-3 text-sm font-semibold"
-        style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
-      >
+      <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
         Opnieuw beginnen
       </button>
     </div>
@@ -1412,105 +1096,52 @@ function EditPlanView({
     ;[stops[i], stops[j]] = [stops[j], stops[i]]
     onChange({ ...plan, stops })
   }
-
-  const removeStop = (i: number) => {
-    const stops = plan.stops.filter((_, idx) => idx !== i)
-    onChange({ ...plan, stops })
-  }
+  const removeStop = (i: number) => onChange({ ...plan, stops: plan.stops.filter((_, idx) => idx !== i) })
 
   return (
     <div>
-      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        Pas het plan aan
-      </h2>
-      <p className="text-xs text-on-surface-variant mb-5">
-        Verwijder stops of pas de volgorde aan. Bevestig daarna het plan.
-      </p>
+      <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>Pas het plan aan</h2>
+      <p className="text-xs text-on-surface-variant mb-5">Verwijder stops of pas de volgorde aan.</p>
 
       <div className="flex flex-col gap-3 mb-5">
         {plan.stops.map((stop, i) => (
-          <div
-            key={i}
-            className="rounded-2xl p-4 shadow-blue flex gap-3"
-            style={{
-              background: stop.isTip ? 'oklch(95% 0.03 83)' : '#FAF7F0',
-              border: `1px solid ${stop.isTip ? '#E4D9C8' : 'oklch(57% 0.14 40 / 0.2)'}`,
-              opacity: stop.isTip ? 0.8 : 1,
-            }}
-          >
+          <div key={i} className="rounded-2xl p-4 shadow-blue flex gap-3" style={{ background: stop.isTip ? 'oklch(95% 0.03 83)' : '#FAF7F0', border: `1px solid ${stop.isTip ? '#E4D9C8' : 'oklch(57% 0.14 40 / 0.2)'}`, opacity: stop.isTip ? 0.8 : 1 }}>
             <div className="flex flex-col gap-1 flex-shrink-0">
-              <button
-                onClick={() => moveStop(i, -1)}
-                disabled={i === 0}
-                className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
-                style={{ background: '#F0E9DA' }}
-              >
+              <button onClick={() => moveStop(i, -1)} disabled={i === 0} className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30" style={{ background: '#F0E9DA' }}>
                 <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>arrow_upward</span>
               </button>
-              <button
-                onClick={() => moveStop(i, 1)}
-                disabled={i === plan.stops.length - 1}
-                className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30"
-                style={{ background: '#F0E9DA' }}
-              >
+              <button onClick={() => moveStop(i, 1)} disabled={i === plan.stops.length - 1} className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-30" style={{ background: '#F0E9DA' }}>
                 <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>arrow_downward</span>
               </button>
             </div>
-
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
                 {stop.isTip && <span className="text-[10px]" style={{ color: '#A8937A' }}>Tip onderweg</span>}
               </div>
-              <button
-                onClick={() => stop.uitjeId && onOpenInfo(stop.uitjeId)}
-                className="font-semibold text-sm text-on-surface text-left"
-                style={{ opacity: stop.uitjeId ? 1 : 1 }}
-              >
-                {stop.uitjeId ? (
-                  <span className="hover:underline">{stop.name}</span>
-                ) : (
-                  stop.name
-                )}
+              <button onClick={() => stop.uitjeId && onOpenInfo(stop.uitjeId)} className="font-semibold text-sm text-on-surface text-left">
+                {stop.uitjeId ? <span className="hover:underline">{stop.name}</span> : stop.name}
               </button>
               <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-2">{stop.description}</p>
             </div>
-
-            <button
-              onClick={() => removeStop(i)}
-              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
-              style={{ background: '#FEF2F2', color: '#EF4444' }}
-            >
+            <button onClick={() => removeStop(i)} className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center" style={{ background: '#FEF2F2', color: '#EF4444' }}>
               <span className="material-symbols-outlined text-sm">close</span>
             </button>
           </div>
         ))}
       </div>
 
-      <button
-        onClick={onAddStop}
-        className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-4"
-        style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px dashed #E4D9C8' }}
-      >
+      <button onClick={onAddStop} className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-4" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px dashed #E4D9C8' }}>
         <span className="material-symbols-outlined text-base">add</span>
         Voeg stop toe
       </button>
 
-      <button
-        onClick={onConfirm}
-        disabled={plan.stops.length === 0}
-        className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
-        style={{ background: 'oklch(57% 0.14 40)' }}
-      >
+      <button onClick={onConfirm} disabled={plan.stops.length === 0} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3 disabled:opacity-50" style={{ background: 'oklch(57% 0.14 40)' }}>
         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
         Bevestig als dagplan
       </button>
 
-      <button
-        onClick={onReset}
-        className="w-full rounded-2xl py-3 text-sm font-semibold"
-        style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
-      >
+      <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
         Opnieuw beginnen
       </button>
     </div>
@@ -1537,26 +1168,15 @@ function DagplanView({
   const now = new Date()
   const currentHour = now.getHours() + now.getMinutes() / 60
   const mapsUrl = buildGoogleMapsUrl(basketIds)
-
-  const parseTime = (t: string) => {
-    const [h, m] = t.split(':').map(Number)
-    return h + (m || 0) / 60
-  }
+  const parseTime = (t: string) => { const [h, m] = t.split(':').map(Number); return h + (m || 0) / 60 }
 
   return (
     <div>
-      <a
-        href={mapsUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center justify-center gap-2 rounded-2xl py-4 text-white font-bold text-base mb-5 shadow-blue"
-        style={{ background: 'oklch(57% 0.14 40)' }}
-      >
+      <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-2xl py-4 text-white font-bold text-base mb-5 shadow-blue" style={{ background: 'oklch(57% 0.14 40)' }}>
         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>directions</span>
         Open route in Google Maps
       </a>
 
-      {/* Timeline */}
       <div className="relative mb-5">
         <div className="absolute left-[18px] top-0 bottom-0 w-0.5" style={{ background: '#E4D9C8' }} />
         {dayPlan.stops.map((stop, i) => {
@@ -1569,23 +1189,10 @@ function DagplanView({
 
           return (
             <div key={i} className="relative flex gap-4 mb-4">
-              <div
-                className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm flex-shrink-0 z-10"
-                style={{
-                  background: isTipStop ? '#A8937A' : isNow ? 'oklch(79% 0.16 83)' : 'oklch(57% 0.14 40)',
-                }}
-              >
+              <div className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-sm flex-shrink-0 z-10" style={{ background: isTipStop ? '#A8937A' : isNow ? 'oklch(79% 0.16 83)' : 'oklch(57% 0.14 40)' }}>
                 {isTipStop ? '💡' : isNow ? '▶' : i + 1}
               </div>
-              <div
-                className="flex-1 rounded-2xl p-4 shadow-blue"
-                style={{
-                  background: isTipStop ? 'oklch(95% 0.03 83)' : '#FAF7F0',
-                  border: `1px solid ${isTipStop ? '#E4D9C8' : isNow ? 'oklch(79% 0.16 83)' : '#E4D9C8'}`,
-                  boxShadow: isNow && !isTipStop ? '0 2px 12px oklch(79% 0.16 83 / 0.2)' : undefined,
-                  opacity: isTipStop ? 0.85 : 1,
-                }}
-              >
+              <div className="flex-1 rounded-2xl p-4 shadow-blue" style={{ background: isTipStop ? 'oklch(95% 0.03 83)' : '#FAF7F0', border: `1px solid ${isTipStop ? '#E4D9C8' : isNow ? 'oklch(79% 0.16 83)' : '#E4D9C8'}`, boxShadow: isNow && !isTipStop ? '0 2px 12px oklch(79% 0.16 83 / 0.2)' : undefined, opacity: isTipStop ? 0.85 : 1 }}>
                 <div className="flex items-center justify-between gap-2 mb-0.5">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
@@ -1593,39 +1200,23 @@ function DagplanView({
                     {isTipStop && <span className="text-[10px] font-semibold" style={{ color: '#A8937A' }}>Tip onderweg</span>}
                   </div>
                   {hasInfo && (
-                    <button
-                      onClick={() => onOpenInfo(stop.uitjeId!)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'oklch(93% 0.05 40)', color: 'oklch(57% 0.14 40)' }}
-                      aria-label="Meer info"
-                    >
+                    <button onClick={() => onOpenInfo(stop.uitjeId!)} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'oklch(93% 0.05 40)', color: 'oklch(57% 0.14 40)' }} aria-label="Meer info">
                       <span className="material-symbols-outlined text-sm">info</span>
                     </button>
                   )}
                 </div>
                 <h3 className="font-semibold text-on-surface mt-0.5">{stop.name}</h3>
                 <p className="text-sm text-on-surface-variant mt-1">{stop.description}</p>
-                {stop.tip && (
-                  <p className="text-xs mt-2 flex items-center gap-1" style={{ color: 'oklch(65% 0.10 218)' }}>
-                    <span className="material-symbols-outlined text-sm">tips_and_updates</span>
-                    {stop.tip}
-                  </p>
-                )}
+                {stop.tip && <p className="text-xs mt-2 flex items-center gap-1" style={{ color: 'oklch(65% 0.10 218)' }}><span className="material-symbols-outlined text-sm">tips_and_updates</span>{stop.tip}</p>}
                 <div className="flex items-center gap-3 mt-2 flex-wrap">
                   {stop.mapsUrl && (
                     <a href={stop.mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
-                      <span className="material-symbols-outlined text-sm">map</span>
-                      Navigeer
+                      <span className="material-symbols-outlined text-sm">map</span>Navigeer
                     </a>
                   )}
                   {hasInfo && (
-                    <button
-                      onClick={() => onOpenInfo(stop.uitjeId!)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold"
-                      style={{ color: 'oklch(57% 0.14 40)' }}
-                    >
-                      <span className="material-symbols-outlined text-sm">auto_stories</span>
-                      Meer info
+                    <button onClick={() => onOpenInfo(stop.uitjeId!)} className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>
+                      <span className="material-symbols-outlined text-sm">auto_stories</span>Meer info
                     </button>
                   )}
                 </div>
@@ -1635,39 +1226,19 @@ function DagplanView({
         })}
       </div>
 
-      {/* Actie-knoppen */}
       <div className="flex gap-3 mb-4">
-        <button
-          onClick={onAanpassen}
-          className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold"
-          style={{ borderColor: '#E4D9C8', color: 'oklch(57% 0.14 40)' }}
-        >
-          Pas plan aan
-        </button>
-        <button
-          onClick={onReset}
-          className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold"
-          style={{ borderColor: '#E4D9C8', color: '#A8937A' }}
-        >
-          Opnieuw beginnen
-        </button>
+        <button onClick={onAanpassen} className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold" style={{ borderColor: '#E4D9C8', color: 'oklch(57% 0.14 40)' }}>Pas plan aan</button>
+        <button onClick={onReset} className="flex-1 rounded-2xl border-2 py-3 text-sm font-semibold" style={{ borderColor: '#E4D9C8', color: '#A8937A' }}>Opnieuw beginnen</button>
       </div>
 
       {sluitDone ? (
-        <div
-          className="rounded-2xl p-4 flex items-center gap-3"
-          style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
-        >
+        <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}>
           <span className="material-symbols-outlined" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
           <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Dag afgesloten — check het dagboek!</p>
           <a href="/dagboek" className="ml-auto text-xs font-semibold" style={{ color: 'oklch(58% 0.10 148)' }}>Dagboek →</a>
         </div>
       ) : (
-        <button
-          onClick={onSluitAf}
-          className="w-full rounded-2xl py-4 font-bold text-base flex items-center justify-center gap-2"
-          style={{ background: '#2C2316', color: 'white' }}
-        >
+        <button onClick={onSluitAf} className="w-full rounded-2xl py-4 font-bold text-base flex items-center justify-center gap-2" style={{ background: '#2C2316', color: 'white' }}>
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>nightlight</span>
           Sluit dag af
         </button>
@@ -1676,15 +1247,14 @@ function DagplanView({
   )
 }
 
-// Info modal — shows uitje details + Wikipedia extract
 function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => void }) {
   const uitje = uitjes.find(u => u.id === uitjeId)
   const [wikiExtract, setWikiExtract] = useState<string | null>(null)
   const [wikiLoading, setWikiLoading] = useState(false)
 
   useEffect(() => {
+    setWikiExtract(null)
     if (!uitje?.wiki) return
-    // Extract article title from Wikipedia URL
     const match = uitje.wiki.match(/wikipedia\.org\/wiki\/(.+)$/)
     if (!match) return
     const title = match[1]
@@ -1692,9 +1262,7 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
     setWikiLoading(true)
     fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.extract) setWikiExtract(data.extract)
-      })
+      .then(data => { if (data?.extract) setWikiExtract(data.extract) })
       .catch(() => {})
       .finally(() => setWikiLoading(false))
   }, [uitjeId])
@@ -1702,118 +1270,59 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
   if (!uitje) return null
 
   const typeLabels: Record<string, string> = {
-    culture: 'Cultuur & Dorpen',
-    entertainment: 'Activiteiten',
-    nature: 'Natuur',
-    food: 'Eten & Drinken',
-    shop: 'Winkelen',
-    bakery: 'Bakker',
+    culture: 'Cultuur & Dorpen', entertainment: 'Activiteiten', nature: 'Natuur',
+    food: 'Eten & Drinken', shop: 'Winkelen', bakery: 'Bakker',
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(44,35,22,0.6)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md rounded-t-3xl shadow-2xl overflow-y-auto"
-        style={{ background: '#FAF7F0', maxHeight: '85vh' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Handle */}
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(44,35,22,0.6)' }} onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl shadow-2xl overflow-y-auto" style={{ background: '#FAF7F0', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full" style={{ background: '#D4C4B0' }} />
         </div>
-
         <div className="px-6 pb-10">
-          {/* Header */}
           <div className="flex items-start justify-between gap-3 mb-4 mt-2">
             <div className="flex-1">
-              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
-                {typeLabels[uitje.type] ?? uitje.type}
-              </span>
-              <h2 className="text-2xl font-bold text-on-surface leading-tight mt-1" style={{ fontFamily: 'var(--font-hand)' }}>
-                {uitje.name}
-              </h2>
+              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>{typeLabels[uitje.type] ?? uitje.type}</span>
+              <h2 className="text-2xl font-bold text-on-surface leading-tight mt-1" style={{ fontFamily: 'var(--font-hand)' }}>{uitje.name}</h2>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
-                  🚗 {uitje.drive} vanuit Les Escaliers
-                </span>
-                {uitje.vegetarian && (
-                  <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>
-                    🌿 Vegetarisch
-                  </span>
-                )}
+                <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>🚗 {uitje.drive} vanuit Les Escaliers</span>
+                {uitje.vegetarian && <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>🌿 Vegetarisch</span>}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: '#F0E9DA', color: '#6B5A3E' }}
-            >
+            <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
               <span className="material-symbols-outlined">close</span>
             </button>
           </div>
 
-          {/* Description */}
           <p className="text-sm leading-relaxed text-on-surface mb-5">{uitje.desc}</p>
 
-          {/* Wikipedia extract */}
           {(wikiLoading || wikiExtract) && (
-            <div
-              className="rounded-2xl p-4 mb-5"
-              style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}
-            >
+            <div className="rounded-2xl p-4 mb-5" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
-                  Wikipedia
-                </span>
-                {wikiLoading && (
-                  <span className="material-symbols-outlined text-sm animate-spin" style={{ color: '#A8937A' }}>refresh</span>
-                )}
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>Wikipedia</span>
+                {wikiLoading && <span className="material-symbols-outlined text-sm animate-spin" style={{ color: '#A8937A' }}>refresh</span>}
               </div>
-              {wikiExtract && (
-                <p className="text-sm leading-relaxed text-on-surface">{wikiExtract}</p>
-              )}
+              {wikiExtract && <p className="text-sm leading-relaxed text-on-surface">{wikiExtract}</p>}
             </div>
           )}
 
-          {/* Links */}
           <div className="flex flex-col gap-2">
             {uitje.wiki && (
-              <a
-                href={uitje.wiki}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
-                style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}
-              >
+              <a href={uitje.wiki} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}>
                 <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
                 Lees meer op Wikipedia
                 <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
               </a>
             )}
             {uitje.site && (
-              <a
-                href={uitje.site}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
-                style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}
-              >
+              <a href={uitje.site} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}>
                 <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>language</span>
                 Officiële website
                 <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
               </a>
             )}
-            <a
-              href={uitje.gmaps}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
-              style={{ background: 'oklch(92% 0.05 218)', color: 'oklch(65% 0.10 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}
-            >
+            <a href={uitje.gmaps} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm" style={{ background: 'oklch(92% 0.05 218)', color: 'oklch(65% 0.10 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}>
               <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>map</span>
               Navigeer in Google Maps
               <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
@@ -1825,208 +1334,88 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
   )
 }
 
-function SluitDagAfModal({
-  followedPlan,
-  setFollowedPlan,
-  actualText,
-  setActualText,
-  moodEmoji,
-  setMoodEmoji,
-  saving,
-  onSave,
-  onClose,
-}: {
-  followedPlan: boolean | null
-  setFollowedPlan: (v: boolean) => void
-  actualText: string
-  setActualText: (v: string) => void
-  moodEmoji: string | null
-  setMoodEmoji: (v: string) => void
-  saving: boolean
-  onSave: () => void
-  onClose: () => void
+function SluitDagAfModal({ followedPlan, setFollowedPlan, actualText, setActualText, moodEmoji, setMoodEmoji, saving, onSave, onClose }: {
+  followedPlan: boolean | null; setFollowedPlan: (v: boolean) => void; actualText: string; setActualText: (v: string) => void
+  moodEmoji: string | null; setMoodEmoji: (v: string) => void; saving: boolean; onSave: () => void; onClose: () => void
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6" style={{ background: 'rgba(44,35,22,0.55)' }}>
-      <div
-        className="w-full max-w-md rounded-3xl p-6 shadow-2xl"
-        style={{ background: '#FAF7F0' }}
-      >
+      <div className="w-full max-w-md rounded-3xl p-6 shadow-2xl" style={{ background: '#FAF7F0' }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-            Sluit de dag af
-          </h3>
-          <button onClick={onClose} style={{ color: '#A8937A' }}>
-            <span className="material-symbols-outlined">close</span>
-          </button>
+          <h3 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>Sluit de dag af</h3>
+          <button onClick={onClose} style={{ color: '#A8937A' }}><span className="material-symbols-outlined">close</span></button>
         </div>
-
         <p className="text-sm font-semibold text-on-surface mb-3">Hebben jullie het plan gevolgd?</p>
         <div className="flex gap-3 mb-4">
           {[{ val: true, label: 'Ja, grotendeels' }, { val: false, label: 'Nee, anders gegaan' }].map(opt => (
-            <button
-              key={String(opt.val)}
-              onClick={() => setFollowedPlan(opt.val)}
-              className="flex-1 rounded-2xl py-3 text-sm font-semibold transition-all"
-              style={
-                followedPlan === opt.val
-                  ? { background: 'oklch(57% 0.14 40)', color: 'white', border: '2px solid oklch(57% 0.14 40)' }
-                  : { background: '#FAF7F0', color: '#6B5A3E', border: '2px solid #E4D9C8' }
-              }
-            >
+            <button key={String(opt.val)} onClick={() => setFollowedPlan(opt.val)} className="flex-1 rounded-2xl py-3 text-sm font-semibold transition-all"
+              style={followedPlan === opt.val ? { background: 'oklch(57% 0.14 40)', color: 'white', border: '2px solid oklch(57% 0.14 40)' } : { background: '#FAF7F0', color: '#6B5A3E', border: '2px solid #E4D9C8' }}>
               {opt.label}
             </button>
           ))}
         </div>
-
         {followedPlan === false && (
           <div className="mb-4">
-            <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: '#A8937A' }}>
-              Wat hebben jullie gedaan?
-            </label>
-            <textarea
-              value={actualText}
-              onChange={e => setActualText(e.target.value)}
-              placeholder="Schrijf kort wat er echt is gebeurd…"
-              rows={3}
-              className="w-full rounded-xl p-3 text-sm resize-none focus:outline-none"
-              style={{ background: 'white', border: '1px solid #E4D9C8', color: '#2C2316' }}
-            />
+            <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: '#A8937A' }}>Wat hebben jullie gedaan?</label>
+            <textarea value={actualText} onChange={e => setActualText(e.target.value)} placeholder="Schrijf kort wat er echt is gebeurd…" rows={3} className="w-full rounded-xl p-3 text-sm resize-none focus:outline-none" style={{ background: 'white', border: '1px solid #E4D9C8', color: '#2C2316' }} />
           </div>
         )}
-
         <p className="text-sm font-semibold text-on-surface mb-3">Hoe was de dag?</p>
         <div className="flex gap-2 mb-5">
           {MOODS.map(m => (
-            <button
-              key={m.emoji}
-              onClick={() => setMoodEmoji(m.emoji)}
-              className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2.5 transition-all"
-              style={
-                moodEmoji === m.emoji
-                  ? { background: 'oklch(92% 0.07 83)', border: '2px solid oklch(79% 0.16 83)', boxShadow: '0 2px 8px oklch(79% 0.16 83 / 0.3)' }
-                  : { background: '#F0E9DA', border: '2px solid transparent' }
-              }
-            >
+            <button key={m.emoji} onClick={() => setMoodEmoji(m.emoji)} className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2.5 transition-all"
+              style={moodEmoji === m.emoji ? { background: 'oklch(92% 0.07 83)', border: '2px solid oklch(79% 0.16 83)', boxShadow: '0 2px 8px oklch(79% 0.16 83 / 0.3)' } : { background: '#F0E9DA', border: '2px solid transparent' }}>
               <span className="text-xl">{m.emoji}</span>
               <span className="text-[9px] font-semibold" style={{ color: moodEmoji === m.emoji ? '#6B5A3E' : '#A8937A' }}>{m.label}</span>
             </button>
           ))}
         </div>
-
-        <button
-          onClick={onSave}
-          disabled={saving || (followedPlan === null)}
-          className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{ background: 'oklch(57% 0.14 40)' }}
-        >
-          {saving ? (
-            <>
-              <span className="material-symbols-outlined text-base animate-spin">refresh</span>
-              Opslaan…
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>book</span>
-              Opslaan in dagboek
-            </>
-          )}
+        <button onClick={onSave} disabled={saving || followedPlan === null} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'oklch(57% 0.14 40)' }}>
+          {saving ? <><span className="material-symbols-outlined text-base animate-spin">refresh</span>Opslaan…</> : <><span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>book</span>Opslaan in dagboek</>}
         </button>
       </div>
     </div>
   )
 }
 
-function PlanMorgenSection({
-  tomorrowEntry,
-  tomorrowPlan,
-  basketIds,
-  onToggleBasket,
-  planning,
-  onPlan,
-  showWizard,
-  onToggleWizard,
-}: {
-  tomorrowEntry: KalenderEntry | null
-  tomorrowPlan: DayPlan | null
-  basketIds: string[]
-  onToggleBasket: (id: string) => void
-  planning: boolean
-  onPlan: () => void
-  showWizard: boolean
-  onToggleWizard: () => void
+function PlanMorgenSection({ tomorrowEntry, tomorrowPlan, basketIds, onToggleBasket, planning, onPlan, showWizard, onToggleWizard }: {
+  tomorrowEntry: KalenderEntry | null; tomorrowPlan: DayPlan | null; basketIds: string[]
+  onToggleBasket: (id: string) => void; planning: boolean; onPlan: () => void; showWizard: boolean; onToggleWizard: () => void
 }) {
   const tomorrowIsReisdag = tomorrowEntry?.type === 'reisdag'
-
   return (
     <div className="mt-8 pt-6" style={{ borderTop: '2px dashed #E4D9C8' }}>
-      <h3 className="text-xl mb-2" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
-        Wat willen we morgen doen?
-      </h3>
-
+      <h3 className="text-xl mb-2" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>Wat willen we morgen doen?</h3>
       {tomorrowIsReisdag && tomorrowEntry?.type === 'reisdag' && (
         <div className="rounded-2xl p-4" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}>
           <p className="font-semibold text-on-surface text-sm">🚗 Morgen is een reisdag</p>
-          <p className="text-xs text-on-surface-variant mt-1">
-            {(tomorrowEntry as Reisdag).van} → {(tomorrowEntry as Reisdag).naar} — {(tomorrowEntry as Reisdag).route}
-          </p>
+          <p className="text-xs text-on-surface-variant mt-1">{(tomorrowEntry as Reisdag).van} → {(tomorrowEntry as Reisdag).naar} — {(tomorrowEntry as Reisdag).route}</p>
         </div>
       )}
-
       {!tomorrowIsReisdag && tomorrowPlan && (
         <div className="rounded-2xl p-4" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}>
           <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.10 148)' }}>✓ Plan voor morgen staat al klaar!</p>
-          <div className="mt-2">
-            {tomorrowPlan.stops.slice(0, 3).map((s, i) => (
-              <p key={i} className="text-xs text-on-surface-variant">{s.time} — {s.name}</p>
-            ))}
-          </div>
+          <div className="mt-2">{tomorrowPlan.stops.slice(0, 3).map((s, i) => <p key={i} className="text-xs text-on-surface-variant">{s.time} — {s.name}</p>)}</div>
         </div>
       )}
-
       {!tomorrowIsReisdag && !tomorrowPlan && (
         <>
           <p className="text-sm text-on-surface-variant mb-4">Plan alvast de dag van morgen. Het staat klaar als jullie wakker worden.</p>
-          <button
-            onClick={onToggleWizard}
-            className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2"
-            style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}
-          >
+          <button onClick={onToggleWizard} className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2" style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '2px solid #E4D9C8' }}>
             <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>event</span>
             {showWizard ? 'Sluit morgen-planner' : 'Plan morgen →'}
           </button>
-
           {showWizard && (
             <div className="mt-4">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-                Kies uitjes voor morgen
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Kies uitjes voor morgen</p>
               <div className="flex flex-col gap-3 mb-4">
-                {uitjes.filter(u => !u.marktDag).slice(0, 6).map(u => {
-                  const inBasket = basketIds.includes(u.id)
-                  return (
-                    <MiniUitjeCard key={u.id} uitje={u} inBasket={inBasket} onToggle={onToggleBasket} />
-                  )
-                })}
+                {uitjes.filter(u => !u.marktDag).slice(0, 6).map(u => (
+                  <MiniUitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={onToggleBasket} />
+                ))}
               </div>
               {basketIds.length > 0 && (
-                <button
-                  onClick={onPlan}
-                  disabled={planning}
-                  className="w-full rounded-2xl py-3 text-white font-semibold text-sm flex items-center justify-center gap-2"
-                  style={{ background: planning ? '#A8937A' : 'oklch(57% 0.14 40)' }}
-                >
-                  {planning ? (
-                    <>
-                      <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
-                      Plan samenstellen…
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                      Stel morgenplan samen ({basketIds.length} stop{basketIds.length > 1 ? 's' : ''})
-                    </>
-                  )}
+                <button onClick={onPlan} disabled={planning} className="w-full rounded-2xl py-3 text-white font-semibold text-sm flex items-center justify-center gap-2" style={{ background: planning ? '#A8937A' : 'oklch(57% 0.14 40)' }}>
+                  {planning ? <><span className="material-symbols-outlined text-sm animate-spin">refresh</span>Plan samenstellen…</> : <><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>Stel morgenplan samen ({basketIds.length} stop{basketIds.length > 1 ? 's' : ''})</>}
                 </button>
               )}
             </div>
@@ -2038,26 +1427,12 @@ function PlanMorgenSection({
 }
 
 function NearMeCard({ location }: { location: UserLocation }) {
-  const searches = [
-    { icon: '🥖', label: 'Bakker', query: 'boulangerie' },
-    { icon: '🛒', label: 'Supermarkt', query: 'supermarché' },
-    { icon: '🛝', label: 'Speeltuin', query: 'aire de jeux' },
-  ]
   return (
     <div className="rounded-2xl p-4 mb-4 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
-      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
-        In de buurt
-      </div>
+      <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>In de buurt</div>
       <div className="flex gap-2">
-        {searches.map(s => (
-          <a
-            key={s.query}
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.query)}&near=${location.lat},${location.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3"
-            style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}
-          >
+        {[{ icon: '🥖', label: 'Bakker', query: 'boulangerie' }, { icon: '🛒', label: 'Supermarkt', query: 'supermarché' }, { icon: '🛝', label: 'Speeltuin', query: 'aire de jeux' }].map(s => (
+          <a key={s.query} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.query)}&near=${location.lat},${location.lon}`} target="_blank" rel="noopener noreferrer" className="flex-1 flex flex-col items-center gap-1.5 rounded-2xl py-3" style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}>
             <span className="text-2xl">{s.icon}</span>
             <span className="text-xs font-semibold" style={{ color: '#6B5A3E' }}>{s.label}</span>
           </a>
@@ -2068,20 +1443,9 @@ function NearMeCard({ location }: { location: UserLocation }) {
 }
 
 function MiniUitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: boolean; onToggle: (id: string) => void }) {
-  const typeColors: Record<string, string> = {
-    entertainment: 'oklch(79% 0.16 83)',
-    culture: 'oklch(57% 0.14 40)',
-    food: 'oklch(65% 0.09 298)',
-    shop: 'oklch(65% 0.10 218)',
-  }
-  const typeIcons: Record<string, string> = {
-    entertainment: 'attractions',
-    culture: 'museum',
-    food: 'restaurant',
-    shop: 'shopping_cart',
-  }
+  const typeColors: Record<string, string> = { entertainment: 'oklch(79% 0.16 83)', culture: 'oklch(57% 0.14 40)', food: 'oklch(65% 0.09 298)', shop: 'oklch(65% 0.10 218)' }
+  const typeIcons: Record<string, string> = { entertainment: 'attractions', culture: 'museum', food: 'restaurant', shop: 'shopping_cart' }
   const c = typeColors[uitje.type] || 'oklch(57% 0.14 40)'
-
   return (
     <div className="rounded-2xl p-3 flex items-center gap-3 shadow-blue" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
       <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${c}20` }}>
@@ -2094,11 +1458,7 @@ function MiniUitjeCard({ uitje, inBasket, onToggle }: { uitje: Uitje; inBasket: 
         </div>
         <p className="text-xs text-on-surface-variant truncate">{uitje.desc}</p>
       </div>
-      <button
-        onClick={() => onToggle(uitje.id)}
-        className="rounded-full text-xs font-bold px-3 py-1.5 flex-shrink-0 transition-all"
-        style={inBasket ? { background: 'oklch(57% 0.14 40)', color: 'white' } : { background: '#F0E9DA', color: '#6B5A3E' }}
-      >
+      <button onClick={() => onToggle(uitje.id)} className="rounded-full text-xs font-bold px-3 py-1.5 flex-shrink-0 transition-all" style={inBasket ? { background: 'oklch(57% 0.14 40)', color: 'white' } : { background: '#F0E9DA', color: '#6B5A3E' }}>
         {inBasket ? '✓' : '+'}
       </button>
     </div>
