@@ -34,3 +34,10 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Privacy en delen
+
+- `/medisch` en `/voor-thuis` zijn privépagina's en vereisen dezelfde NextAuth-login als de privé API-routes.
+- Deel een eventuele geheime of moeilijk te raden URL nooit publiek, niet in openbare chats en niet op sociale media. Een geheime URL is geen vervanging voor inloggen.
+- Gebruik `/nood` als openbare noodmodus: die pagina bevat alleen minimale Franse noodnummers en geen medische context of persoonsgegevens.
+- De service worker cachet geen privépagina's of API-antwoorden, zodat medische gegevens en thuisblijversupdates niet onbedoeld offline in een publieke browsercache blijven staan.
