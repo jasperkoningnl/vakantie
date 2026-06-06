@@ -49,6 +49,7 @@ export interface DayPlanStop {
   mapsUrl?: string
   coords?: [number, number]
   isTip?: boolean
+  uitjeId?: string
 }
 
 export interface DayPlan {

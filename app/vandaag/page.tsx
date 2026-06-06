@@ -26,7 +26,12 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
-type Phase = 'select' | 'confirm' | 'edit' | 'plan'
+// Uitjes that can be a "main destination of the day" (not food/shop/bakery/markt)
+const DESTINATION_UITJES = uitjes.filter(u =>
+  (u.type === 'culture' || u.type === 'entertainment' || u.type === 'nature') && !u.marktDag
+)
+
+type Phase = 'destination' | 'select' | 'confirm' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
 interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
@@ -102,6 +107,29 @@ function sortByRoute(stops: Uitje[], destinationId: string): Uitje[] {
   return [...others.sort((a, b) => proj(a) - proj(b)), dest]
 }
 
+// Returns route projection (0 = home, 1 = destination) and perpendicular ratio
+function getRouteInfo(stop: Uitje, destinationId: string): { proj: number; perpRatio: number } {
+  const dest = uitjes.find(u => u.id === destinationId)
+  if (!dest) return { proj: 0, perpRatio: 0 }
+  const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
+  const lenSq = rv[0] ** 2 + rv[1] ** 2
+  if (lenSq === 0) return { proj: 0, perpRatio: 0 }
+  const v = [stop.coords[0] - HOME_COORDS[0], stop.coords[1] - HOME_COORDS[1]]
+  const proj = (v[0] * rv[0] + v[1] * rv[1]) / lenSq
+  const perpSq = (v[0] ** 2 + v[1] ** 2) - proj * proj * lenSq
+  const perpRatio = Math.sqrt(Math.max(0, perpSq) / lenSq)
+  return { proj, perpRatio }
+}
+
+// Returns a warning label if stop is not on the route to destination
+function getOffRouteLabel(stop: Uitje, destinationId: string | null): string | null {
+  if (!destinationId || stop.id === destinationId) return null
+  const { proj, perpRatio } = getRouteInfo(stop, destinationId)
+  if (proj < -0.1) return 'Andere richting'
+  if (perpRatio > 0.8) return 'Grote omweg'
+  return null
+}
+
 function buildLocalPlan(ids: string[], destinationId: string | null): DayPlan {
   const stops = ids.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
   const sorted = destinationId ? sortByRoute(stops, destinationId) : stops
@@ -113,6 +141,7 @@ function buildLocalPlan(ids: string[], destinationId: string | null): DayPlan {
     mapsUrl: u.gmaps,
     coords: u.coords,
     isTip: false,
+    uitjeId: u.id,
   }))
   return { stops: planStops, checklist: [] }
 }
@@ -137,7 +166,8 @@ async function getVisitedNames(): Promise<string[]> {
 
 export default function VandaagPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
-  const [phase, setPhase] = useState<Phase>('select')
+  const [phase, setPhase] = useState<Phase>('destination')
+  const [mainDestinationId, setMainDestinationId] = useState<string | null>(null)
   const [selectedCats, setSelectedCats] = useState<string[]>([])
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [activeCatTab, setActiveCatTab] = useState<string>(CATEGORIES[0].value)
@@ -162,6 +192,9 @@ export default function VandaagPage() {
   const [sluitSaving, setSluitSaving] = useState(false)
   const [sluitDone, setSluitDone] = useState(false)
 
+  // Info modal
+  const [infoUitjeId, setInfoUitjeId] = useState<string | null>(null)
+
   const today = getTodayDateStr()
   const tomorrow = getTomorrowDateStr()
   const todayEntry = reiskalender[today] ?? null
@@ -179,6 +212,9 @@ export default function VandaagPage() {
 
     const saved = localStorage.getItem('dagplan_basket')
     if (saved) setBasketIds(JSON.parse(saved))
+
+    const savedDest = localStorage.getItem('dagplan_destination')
+    if (savedDest) setMainDestinationId(savedDest)
 
     fetch('/api/diary')
       .then(r => r.json())
@@ -206,7 +242,6 @@ export default function VandaagPage() {
         }
       }).catch(() => {})
 
-    // Request geolocation
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         pos => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
@@ -238,6 +273,19 @@ export default function VandaagPage() {
 
   const goToSelect = () => {
     setActiveCatTab(selectedCats[0] || CATEGORIES[0].value)
+    setPhase('select')
+  }
+
+  const handleDestinationChosen = (destId: string) => {
+    setMainDestinationId(destId)
+    localStorage.setItem('dagplan_destination', destId)
+    // Add destination to basket if not already there
+    setBasketIds(prev => {
+      if (prev.includes(destId)) return prev
+      const next = [...prev, destId]
+      localStorage.setItem('dagplan_basket', JSON.stringify(next))
+      return next
+    })
     setPhase('select')
   }
 
@@ -293,9 +341,10 @@ export default function VandaagPage() {
   }
 
   const reset = () => {
-    setPhase('select')
+    setPhase('destination')
     setSelectedCats([])
     setBasketIds([])
+    setMainDestinationId(null)
     setActiveCatTab(CATEGORIES[0].value)
     setDayPlan(null)
     setEditPlan(null)
@@ -304,6 +353,7 @@ export default function VandaagPage() {
     setError(null)
     setShowSluitAf(false)
     localStorage.removeItem('dagplan_basket')
+    localStorage.removeItem('dagplan_destination')
   }
 
   const handleAddStop = () => {
@@ -329,6 +379,7 @@ export default function VandaagPage() {
           mapsUrl: u?.gmaps,
           coords: u?.coords,
           isTip: false,
+          uitjeId: u?.id,
         }
       })
       setEditPlan({ ...editPlan, stops: [...editPlan.stops, ...newStops] })
@@ -379,7 +430,7 @@ export default function VandaagPage() {
       )}
 
       {/* Regenmelding */}
-      {rainWarning && phase === 'select' && (
+      {rainWarning && (phase === 'destination' || phase === 'select') && (
         <div className="rounded-2xl p-3 mb-4 flex items-start gap-2" style={{ background: 'oklch(92% 0.05 218)', border: '1px solid oklch(65% 0.10 218 / 0.3)' }}>
           <span className="material-symbols-outlined text-base mt-0.5" style={{ color: 'oklch(65% 0.10 218)' }}>water_drop</span>
           <p className="text-sm" style={{ color: '#2C2316' }}>{rainWarning}</p>
@@ -387,7 +438,7 @@ export default function VandaagPage() {
       )}
 
       {/* Marktdag banner */}
-      {vandaagMarkten.length > 0 && phase === 'select' && (
+      {vandaagMarkten.length > 0 && (phase === 'destination' || phase === 'select') && (
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'oklch(92% 0.07 83)', border: '1px solid oklch(79% 0.16 83 / 0.4)' }}>
           <div className="flex items-start gap-2 mb-2">
             <span className="text-xl">🛒</span>
@@ -449,24 +500,36 @@ export default function VandaagPage() {
       {/* Wizard — niet op reisdagen */}
       {!isReisdag && (
         <>
+          {phase === 'destination' && (
+            <DestinationPhase
+              onChoose={handleDestinationChosen}
+              onSkip={() => { setPhase('select') }}
+              onOpenInfo={setInfoUitjeId}
+            />
+          )}
+
           {phase === 'select' && (
             <SelectPhase
               activeCatTab={activeCatTab}
               setActiveCatTab={setActiveCatTab}
               basketIds={basketIds}
+              mainDestinationId={mainDestinationId}
               onToggleBasket={toggleBasket}
               addStopMode={addStopMode}
-              onBack={addStopMode ? handleAddStopReturn : undefined}
+              onBack={addStopMode ? handleAddStopReturn : () => setPhase('destination')}
               onConfirm={addStopMode ? handleAddStopReturn : () => setPhase('confirm')}
+              onOpenInfo={setInfoUitjeId}
             />
           )}
 
           {phase === 'confirm' && (
             <ConfirmPhase
               basketIds={basketIds}
+              mainDestinationId={mainDestinationId}
               onConfirm={(sortedIds, destId) => handlePlan(today, sortedIds, destId)}
               onBack={() => setPhase('select')}
               onReset={reset}
+              onOpenInfo={setInfoUitjeId}
             />
           )}
 
@@ -478,6 +541,7 @@ export default function VandaagPage() {
               onConfirm={() => handleConfirmPlan(editPlan)}
               onAddStop={handleAddStop}
               onReset={reset}
+              onOpenInfo={setInfoUitjeId}
             />
           )}
 
@@ -490,6 +554,7 @@ export default function VandaagPage() {
                 onReset={reset}
                 onSluitAf={() => setShowSluitAf(true)}
                 sluitDone={sluitDone}
+                onOpenInfo={setInfoUitjeId}
               />
               {showSluitAf && (
                 <SluitDagAfModal
@@ -509,8 +574,16 @@ export default function VandaagPage() {
         </>
       )}
 
+      {/* Info modal — uitje details */}
+      {infoUitjeId && (
+        <UitjeInfoModal
+          uitjeId={infoUitjeId}
+          onClose={() => setInfoUitjeId(null)}
+        />
+      )}
+
       {/* Plan morgen — na 17:00, toon onderaan */}
-      {after17 && !isReisdag && (phase === 'plan' || phase === 'select') && (
+      {after17 && !isReisdag && (phase === 'plan' || phase === 'destination') && (
         <PlanMorgenSection
           tomorrowEntry={tomorrowEntry}
           tomorrowPlan={tomorrowPlan}
@@ -629,7 +702,6 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
 
   return (
     <div className="mb-5">
-      {/* Header */}
       <div
         className="rounded-2xl p-5 mb-4"
         style={{ background: 'linear-gradient(135deg, #2C2316, oklch(40% 0.12 40))', color: 'white' }}
@@ -658,7 +730,6 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
         )}
       </div>
 
-      {/* Huidige locatie */}
       {userLocation && (
         <div
           className="rounded-2xl p-3 mb-4 flex items-center gap-3"
@@ -683,7 +754,6 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
         </div>
       )}
 
-      {/* Snelle acties & tussenstop */}
       {userLocation && (
         <div className="mb-5">
           <div className="flex gap-2 mb-3">
@@ -750,7 +820,6 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
         </div>
       )}
 
-      {/* Tussenstops */}
       <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
         Route van vandaag
       </div>
@@ -779,7 +848,6 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
         ))}
       </div>
 
-      {/* Overnachting */}
       {overnachting && (
         <>
           <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>
@@ -814,84 +882,112 @@ function ReisDagView({ entry, userLocation }: { entry: Reisdag; userLocation: Us
   )
 }
 
-function CategoryBuildPhase({
-  selectedCats,
-  onToggleCat,
-  onNext,
-  basketIds,
+// Step 1: Pick the main destination of the day
+function DestinationPhase({
+  onChoose,
+  onSkip,
+  onOpenInfo,
 }: {
-  selectedCats: string[]
-  onToggleCat: (v: string) => void
-  onNext: () => void
-  basketIds: string[]
+  onChoose: (id: string) => void
+  onSkip: () => void
+  onOpenInfo: (id: string) => void
 }) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const baseCoords = getTodayBaseCoords()
+  const destinations = DESTINATION_UITJES.filter(u =>
+    !baseCoords || haversineKm(u.coords, baseCoords) <= 250
+  )
+
+  const typeIcon: Record<string, string> = {
+    culture: 'castle',
+    entertainment: 'attractions',
+    nature: 'park',
+  }
+
   return (
     <div>
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        Wat willen jullie<br />vandaag doen?
+        Wat is jullie bestemming<br />vandaag?
       </h2>
-      <p className="text-xs text-on-surface-variant mb-4">Kies één of meerdere categorieën.</p>
+      <p className="text-xs text-on-surface-variant mb-5">
+        Kies je hoofdbestemming. Op basis daarvan sorteren we de rest van de dag logisch voor je.
+      </p>
 
-      <div className="grid grid-cols-2 gap-2.5 mb-5">
-        {CATEGORIES.map(cat => {
-          const isSel = selectedCats.includes(cat.value)
+      <div className="flex flex-col gap-3 mb-24">
+        {destinations.map(u => {
+          const isSel = selected === u.id
           return (
             <button
-              key={cat.value}
-              onClick={() => onToggleCat(cat.value)}
-              className="rounded-2xl p-3.5 flex items-center gap-2.5 text-left transition-all"
+              key={u.id}
+              onClick={() => setSelected(prev => prev === u.id ? null : u.id)}
+              className="rounded-2xl p-4 flex items-start gap-3 shadow-blue text-left w-full transition-all"
               style={{
-                background: isSel ? cat.bg : '#FAF7F0',
-                border: `2px solid ${isSel ? cat.color : '#E4D9C8'}`,
-                boxShadow: isSel ? `0 2px 12px ${cat.color}30` : '0 1px 4px rgba(44,35,22,0.07)',
+                background: isSel ? 'oklch(93% 0.05 40)' : '#FAF7F0',
+                border: `2px solid ${isSel ? 'oklch(57% 0.14 40)' : '#E4D9C8'}`,
               }}
             >
-              <span className="material-symbols-outlined text-2xl" style={{ color: cat.color, fontVariationSettings: isSel ? "'FILL' 1" : "'FILL' 0" }}>
-                {cat.icon}
-              </span>
-              <span className="text-sm font-semibold" style={{ color: isSel ? cat.color : '#2C2316' }}>
-                {cat.label}
-              </span>
-              {isSel && (
-                <div className="w-5 h-5 rounded-full flex items-center justify-center ml-auto flex-shrink-0" style={{ background: cat.color }}>
-                  <svg width="10" height="10" viewBox="0 0 10 10">
-                    <path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: isSel ? 'oklch(57% 0.14 40)' : '#F0E9DA' }}
+              >
+                <span
+                  className="material-symbols-outlined text-lg"
+                  style={{ color: isSel ? 'white' : '#6B5A3E', fontVariationSettings: "'FILL' 1" }}
+                >
+                  {typeIcon[u.type] ?? 'place'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-on-surface">{u.name}</p>
+                  {isSel && (
+                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
+                      Bestemming
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs text-on-surface-variant">🚗 {u.drive}</span>
+                </div>
+                <p className="text-xs text-on-surface-variant mt-1 line-clamp-2">{u.desc}</p>
+              </div>
+              <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center"
+                  style={{ background: '#F0E9DA' }}
+                  aria-label="Meer info"
+                >
+                  <span className="material-symbols-outlined text-sm" style={{ color: '#6B5A3E' }}>info</span>
+                </button>
+              </div>
             </button>
           )
         })}
       </div>
 
-      {selectedCats.length > 0 && (
-        <button
-          onClick={onNext}
-          className="w-full rounded-2xl py-4 text-white font-semibold text-base flex items-center justify-center gap-2"
-          style={{ background: 'oklch(57% 0.14 40)' }}
-        >
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>explore</span>
-          Bekijk uitjes →
-        </button>
-      )}
-
-      {selectedCats.length === 0 && (
-        <div className="mt-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Of kies direct een uitje</p>
-          <div className="flex flex-col gap-3">
-            {uitjes.filter(u => {
-              if (u.marktDag) return false
-              const base = getTodayBaseCoords()
-              return !base || haversineKm(u.coords, base) <= 250
-            }).slice(0, 5).map(u => (
-              <MiniUitjeCard key={u.id} uitje={u} inBasket={basketIds.includes(u.id)} onToggle={() => {}} />
-            ))}
-            <a href="/uitjes" className="text-center text-sm font-semibold py-2" style={{ color: 'oklch(65% 0.10 218)' }}>
-              Alle uitjes bekijken →
-            </a>
-          </div>
+      {/* Fixed bottom */}
+      <div className="fixed bottom-20 inset-x-0 px-4 z-40">
+        <div className="max-w-md mx-auto flex flex-col gap-2">
+          {selected && (
+            <button
+              onClick={() => onChoose(selected)}
+              className="w-full rounded-2xl py-4 text-white font-semibold text-base flex items-center justify-center gap-2 shadow-xl"
+              style={{ background: 'oklch(57% 0.14 40)', boxShadow: '0 4px 20px rgba(44,35,22,0.35)' }}
+            >
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+              {uitjes.find(u => u.id === selected)?.name} als bestemming →
+            </button>
+          )}
+          <button
+            onClick={onSkip}
+            className="w-full rounded-2xl py-3 text-sm font-semibold"
+            style={{ background: 'rgba(255,255,255,0.9)', border: '2px solid #E4D9C8', color: '#A8937A', backdropFilter: 'blur(4px)' }}
+          >
+            Geen vaste bestemming — gewoon kijken
+          </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -900,49 +996,92 @@ function SelectPhase({
   activeCatTab,
   setActiveCatTab,
   basketIds,
+  mainDestinationId,
   onToggleBasket,
   addStopMode,
   onBack,
   onConfirm,
+  onOpenInfo,
 }: {
   activeCatTab: string
   setActiveCatTab: (v: string) => void
   basketIds: string[]
+  mainDestinationId: string | null
   onToggleBasket: (id: string) => void
   addStopMode: boolean
   onBack?: () => void
   onConfirm: () => void
+  onOpenInfo: (id: string) => void
 }) {
   const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES[0]
   const baseCoords = getTodayBaseCoords()
-  const catUitjes = uitjes
+  const destination = mainDestinationId ? uitjes.find(u => u.id === mainDestinationId) : null
+
+  // Filter uitjes by category and distance
+  const rawCatUitjes = uitjes
     .filter(activeCat.uitjeFilter)
     .filter(u => !baseCoords || haversineKm(u.coords, baseCoords) <= 250)
 
+  // Sort by route when destination is known: project onto route, destination last
+  const catUitjes = mainDestinationId
+    ? (() => {
+        const dest = uitjes.find(u => u.id === mainDestinationId)
+        if (!dest) return rawCatUitjes
+        const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
+        const lenSq = rv[0] ** 2 + rv[1] ** 2
+        const proj = (u: Uitje) => {
+          const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
+          return lenSq > 0 ? (v[0] * rv[0] + v[1] * rv[1]) / lenSq : 0
+        }
+        return [...rawCatUitjes].sort((a, b) => proj(a) - proj(b))
+      })()
+    : rawCatUitjes
+
+  // Stops in basket but not the destination
+  const extraBasketCount = basketIds.filter(id => id !== mainDestinationId).length
+
   return (
     <div>
-      {addStopMode && onBack && (
+      {onBack && (
         <button
           onClick={onBack}
           className="flex items-center gap-1 text-sm font-semibold mb-4"
           style={{ color: 'oklch(57% 0.14 40)' }}
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
-          Terug naar plan
+          {addStopMode ? 'Terug naar plan' : 'Bestemming kiezen'}
         </button>
       )}
 
+      {/* Chosen destination badge */}
+      {destination && !addStopMode && (
+        <div
+          className="rounded-2xl p-3 mb-4 flex items-center gap-3"
+          style={{ background: 'oklch(93% 0.05 40)', border: '2px solid oklch(57% 0.14 40 / 0.4)' }}
+        >
+          <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>flag</span>
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#A8937A' }}>Bestemming van vandaag</p>
+            <p className="font-semibold text-sm text-on-surface">{destination.name}</p>
+          </div>
+          <span className="text-xs text-on-surface-variant">🚗 {destination.drive}</span>
+        </div>
+      )}
+
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
-        {addStopMode ? 'Extra stop toevoegen' : 'Wat willen jullie doen?'}
+        {addStopMode ? 'Extra stop toevoegen' : 'Wat nog meer?'}
       </h2>
       <p className="text-xs text-on-surface-variant mb-4">
-        {basketIds.length === 0 ? 'Selecteer wat je vandaag wilt doen.' : `${basketIds.length} uitje${basketIds.length > 1 ? 's' : ''} geselecteerd.`}
+        {mainDestinationId
+          ? 'Stops zijn gesorteerd op de route. Stops die niet logisch op de weg liggen worden gemarkeerd.'
+          : extraBasketCount === 0 ? 'Selecteer wat je vandaag wilt doen.' : `${extraBasketCount} extra stop${extraBasketCount > 1 ? 's' : ''} toegevoegd.`
+        }
       </p>
 
-      {/* Categorie tabs — altijd alle 6 */}
+      {/* Categorie tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-5" style={{ scrollbarWidth: 'none' }}>
         {CATEGORIES.map(cat => {
-          const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id))
+          const hasSelection = uitjes.filter(cat.uitjeFilter).some(u => basketIds.includes(u.id) && u.id !== mainDestinationId)
           const isActive = activeCatTab === cat.value
           return (
             <button
@@ -974,19 +1113,29 @@ function SelectPhase({
       <div className="flex flex-col gap-4 mb-24">
         {catUitjes.map(u => {
           const inBasket = basketIds.includes(u.id)
+          const isMainDest = u.id === mainDestinationId
           const isMarktVandaag = isTodayMarkt(u)
+          const offRouteLabel = mainDestinationId && !isMainDest ? getOffRouteLabel(u, mainDestinationId) : null
+
           return (
             <div
               key={u.id}
               className="rounded-2xl p-5 shadow-blue"
               style={{
-                background: inBasket ? `${activeCat.color}0D` : '#FAF7F0',
-                border: `2px solid ${inBasket ? activeCat.color : '#E4D9C8'}`,
+                background: isMainDest ? 'oklch(93% 0.05 40)' : inBasket ? `${activeCat.color}0D` : '#FAF7F0',
+                border: `2px solid ${isMainDest ? 'oklch(57% 0.14 40)' : inBasket ? activeCat.color : '#E4D9C8'}`,
               }}
             >
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-xl font-bold text-on-surface leading-tight">{u.name}</h3>
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <button
+                      onClick={() => onOpenInfo(u.id)}
+                      className="text-xl font-bold text-on-surface leading-tight text-left hover:underline"
+                    >
+                      {u.name}
+                    </button>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 mt-1.5">
                     <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
                       🚗 {u.drive}
@@ -999,6 +1148,22 @@ function SelectPhase({
                     {isMarktVandaag && (
                       <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
                         🛒 Markt vandaag!
+                      </span>
+                    )}
+                    {isMainDest && (
+                      <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
+                        📍 Bestemming
+                      </span>
+                    )}
+                    {offRouteLabel && (
+                      <span
+                        className="text-[10px] font-bold rounded-full px-2 py-0.5 flex items-center gap-0.5"
+                        style={{
+                          background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)',
+                          color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)',
+                        }}
+                      >
+                        {offRouteLabel === 'Andere richting' ? '↩' : '↗'} {offRouteLabel}
                       </span>
                     )}
                   </div>
@@ -1025,33 +1190,43 @@ function SelectPhase({
                 </div>
               )}
 
-              <button
-                onClick={() => onToggleBasket(u.id)}
-                className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
-                style={
-                  inBasket
-                    ? { background: activeCat.color, color: 'white' }
-                    : { background: '#F0E9DA', color: activeCat.color }
-                }
-              >
-                {inBasket ? (
-                  <>
-                    <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                    Geselecteerd
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-base">add_circle</span>
-                    Selecteer
-                  </>
-                )}
-              </button>
+              {isMainDest ? (
+                <div
+                  className="w-full rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2"
+                  style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
+                >
+                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+                  Hoofdbestemming
+                </div>
+              ) : (
+                <button
+                  onClick={() => onToggleBasket(u.id)}
+                  className="w-full rounded-xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2"
+                  style={
+                    inBasket
+                      ? { background: activeCat.color, color: 'white' }
+                      : { background: '#F0E9DA', color: activeCat.color }
+                  }
+                >
+                  {inBasket ? (
+                    <>
+                      <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                      Geselecteerd
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">add_circle</span>
+                      Voeg toe
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )
         })}
       </div>
 
-      {/* Fixed bottom — naar overzicht */}
+      {/* Fixed bottom */}
       {basketIds.length > 0 && (
         <div className="fixed bottom-20 inset-x-0 px-4 z-40">
           <div className="max-w-md mx-auto">
@@ -1072,16 +1247,21 @@ function SelectPhase({
 
 function ConfirmPhase({
   basketIds,
+  mainDestinationId,
   onConfirm,
   onBack,
   onReset,
+  onOpenInfo,
 }: {
   basketIds: string[]
+  mainDestinationId: string | null
   onConfirm: (sortedIds: string[], destinationId: string | null) => void
   onBack: () => void
   onReset: () => void
+  onOpenInfo: (id: string) => void
 }) {
-  const [destinationId, setDestinationId] = useState<string | null>(null)
+  // Use mainDestinationId (pre-set), but still allow changing it here
+  const [destinationId, setDestinationId] = useState<string | null>(mainDestinationId)
 
   const allStops = basketIds.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
   const sortedStops = destinationId ? sortByRoute(allStops, destinationId) : allStops
@@ -1092,14 +1272,17 @@ function ConfirmPhase({
     <div>
       <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold mb-4" style={{ color: 'oklch(57% 0.14 40)' }}>
         <span className="material-symbols-outlined text-base">arrow_back</span>
-        Aanpassen
+        Stops aanpassen
       </button>
 
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
         Jouw dag
       </h2>
       <p className="text-xs text-on-surface-variant mb-4">
-        Tik op een stop om die als bestemming van de dag te kiezen — de andere stops worden automatisch op de route geordend.
+        {destinationId
+          ? 'Stops zijn op route geordend. Je kunt de bestemming nog aanpassen door op een andere stop te tikken.'
+          : 'Tik op een stop om die als bestemming van de dag te kiezen — de andere stops worden automatisch op de route geordend.'
+        }
       </p>
 
       <div className="flex flex-col gap-3 mb-5">
@@ -1113,6 +1296,7 @@ function ConfirmPhase({
         {sortedStops.map((u, i) => {
           const isDest = u.id === destinationId
           const isMarktVandaag = isTodayMarkt(u)
+          const offRouteLabel = destinationId && !isDest ? getOffRouteLabel(u, destinationId) : null
           return (
             <button
               key={u.id}
@@ -1130,7 +1314,12 @@ function ConfirmPhase({
                 {isDest ? '📍' : i + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-on-surface">{u.name}</p>
+                <button
+                  onClick={e => { e.stopPropagation(); onOpenInfo(u.id) }}
+                  className="font-semibold text-on-surface text-left hover:underline"
+                >
+                  {u.name}
+                </button>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-on-surface-variant">🚗 {u.drive}</span>
                   {u.vegetarian && <span className="text-xs text-on-surface-variant">🌿</span>}
@@ -1142,6 +1331,17 @@ function ConfirmPhase({
                   {isDest && (
                     <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
                       Bestemming
+                    </span>
+                  )}
+                  {offRouteLabel && (
+                    <span
+                      className="text-[10px] font-bold rounded-full px-2 py-0.5"
+                      style={{
+                        background: offRouteLabel === 'Andere richting' ? '#FEF2F2' : 'oklch(92% 0.07 83)',
+                        color: offRouteLabel === 'Andere richting' ? '#DC2626' : 'oklch(45% 0.14 40)',
+                      }}
+                    >
+                      {offRouteLabel === 'Andere richting' ? '↩' : '↗'} {offRouteLabel}
                     </span>
                   )}
                 </div>
@@ -1195,6 +1395,7 @@ function EditPlanView({
   onConfirm,
   onAddStop,
   onReset,
+  onOpenInfo,
 }: {
   plan: DayPlan
   onChange: (p: DayPlan) => void
@@ -1202,6 +1403,7 @@ function EditPlanView({
   onConfirm: () => void
   onAddStop: () => void
   onReset: () => void
+  onOpenInfo: (id: string) => void
 }) {
   const moveStop = (i: number, dir: -1 | 1) => {
     const stops = [...plan.stops]
@@ -1236,7 +1438,6 @@ function EditPlanView({
               opacity: stop.isTip ? 0.8 : 1,
             }}
           >
-            {/* Reorder arrows */}
             <div className="flex flex-col gap-1 flex-shrink-0">
               <button
                 onClick={() => moveStop(i, -1)}
@@ -1256,17 +1457,25 @@ function EditPlanView({
               </button>
             </div>
 
-            {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
                 {stop.isTip && <span className="text-[10px]" style={{ color: '#A8937A' }}>Tip onderweg</span>}
               </div>
-              <p className="font-semibold text-sm text-on-surface">{stop.name}</p>
+              <button
+                onClick={() => stop.uitjeId && onOpenInfo(stop.uitjeId)}
+                className="font-semibold text-sm text-on-surface text-left"
+                style={{ opacity: stop.uitjeId ? 1 : 1 }}
+              >
+                {stop.uitjeId ? (
+                  <span className="hover:underline">{stop.name}</span>
+                ) : (
+                  stop.name
+                )}
+              </button>
               <p className="text-xs text-on-surface-variant mt-0.5 line-clamp-2">{stop.description}</p>
             </div>
 
-            {/* Remove */}
             <button
               onClick={() => removeStop(i)}
               className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
@@ -1278,7 +1487,6 @@ function EditPlanView({
         ))}
       </div>
 
-      {/* Voeg stop toe */}
       <button
         onClick={onAddStop}
         className="w-full rounded-2xl py-3 text-sm font-semibold flex items-center justify-center gap-2 mb-4"
@@ -1288,7 +1496,6 @@ function EditPlanView({
         Voeg stop toe
       </button>
 
-      {/* Bevestig */}
       <button
         onClick={onConfirm}
         disabled={plan.stops.length === 0}
@@ -1317,6 +1524,7 @@ function DagplanView({
   onReset,
   onSluitAf,
   sluitDone,
+  onOpenInfo,
 }: {
   dayPlan: DayPlan
   basketIds: string[]
@@ -1324,6 +1532,7 @@ function DagplanView({
   onReset: () => void
   onSluitAf: () => void
   sluitDone: boolean
+  onOpenInfo: (id: string) => void
 }) {
   const now = new Date()
   const currentHour = now.getHours() + now.getMinutes() / 60
@@ -1336,7 +1545,6 @@ function DagplanView({
 
   return (
     <div>
-      {/* Google Maps multi-stop knop */}
       <a
         href={mapsUrl}
         target="_blank"
@@ -1357,6 +1565,7 @@ function DagplanView({
             ? currentHour >= stopTime && currentHour < parseTime(dayPlan.stops[i + 1].time)
             : currentHour >= stopTime
           const isTipStop = stop.isTip
+          const hasInfo = !!stop.uitjeId
 
           return (
             <div key={i} className="relative flex gap-4 mb-4">
@@ -1377,9 +1586,23 @@ function DagplanView({
                   opacity: isTipStop ? 0.85 : 1,
                 }}
               >
-                <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
-                {isNow && !isTipStop && <span className="ml-2 text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>Nu</span>}
-                {isTipStop && <span className="ml-2 text-[10px] font-semibold" style={{ color: '#A8937A' }}>Tip onderweg</span>}
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold" style={{ color: 'oklch(57% 0.14 40)' }}>{stop.time}</span>
+                    {isNow && !isTipStop && <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: 'oklch(92% 0.07 83)', color: 'oklch(57% 0.14 40)' }}>Nu</span>}
+                    {isTipStop && <span className="text-[10px] font-semibold" style={{ color: '#A8937A' }}>Tip onderweg</span>}
+                  </div>
+                  {hasInfo && (
+                    <button
+                      onClick={() => onOpenInfo(stop.uitjeId!)}
+                      className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'oklch(93% 0.05 40)', color: 'oklch(57% 0.14 40)' }}
+                      aria-label="Meer info"
+                    >
+                      <span className="material-symbols-outlined text-sm">info</span>
+                    </button>
+                  )}
+                </div>
                 <h3 className="font-semibold text-on-surface mt-0.5">{stop.name}</h3>
                 <p className="text-sm text-on-surface-variant mt-1">{stop.description}</p>
                 {stop.tip && (
@@ -1388,12 +1611,24 @@ function DagplanView({
                     {stop.tip}
                   </p>
                 )}
-                {stop.mapsUrl && (
-                  <a href={stop.mapsUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
-                    <span className="material-symbols-outlined text-sm">map</span>
-                    Navigeer
-                  </a>
-                )}
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  {stop.mapsUrl && (
+                    <a href={stop.mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'oklch(65% 0.10 218)' }}>
+                      <span className="material-symbols-outlined text-sm">map</span>
+                      Navigeer
+                    </a>
+                  )}
+                  {hasInfo && (
+                    <button
+                      onClick={() => onOpenInfo(stop.uitjeId!)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: 'oklch(57% 0.14 40)' }}
+                    >
+                      <span className="material-symbols-outlined text-sm">auto_stories</span>
+                      Meer info
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -1418,7 +1653,6 @@ function DagplanView({
         </button>
       </div>
 
-      {/* Sluit dag af */}
       {sluitDone ? (
         <div
           className="rounded-2xl p-4 flex items-center gap-3"
@@ -1438,6 +1672,155 @@ function DagplanView({
           Sluit dag af
         </button>
       )}
+    </div>
+  )
+}
+
+// Info modal — shows uitje details + Wikipedia extract
+function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => void }) {
+  const uitje = uitjes.find(u => u.id === uitjeId)
+  const [wikiExtract, setWikiExtract] = useState<string | null>(null)
+  const [wikiLoading, setWikiLoading] = useState(false)
+
+  useEffect(() => {
+    if (!uitje?.wiki) return
+    // Extract article title from Wikipedia URL
+    const match = uitje.wiki.match(/wikipedia\.org\/wiki\/(.+)$/)
+    if (!match) return
+    const title = match[1]
+    const lang = uitje.wiki.includes('nl.wikipedia') ? 'nl' : 'en'
+    setWikiLoading(true)
+    fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.extract) setWikiExtract(data.extract)
+      })
+      .catch(() => {})
+      .finally(() => setWikiLoading(false))
+  }, [uitjeId])
+
+  if (!uitje) return null
+
+  const typeLabels: Record<string, string> = {
+    culture: 'Cultuur & Dorpen',
+    entertainment: 'Activiteiten',
+    nature: 'Natuur',
+    food: 'Eten & Drinken',
+    shop: 'Winkelen',
+    bakery: 'Bakker',
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: 'rgba(44,35,22,0.6)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-t-3xl shadow-2xl overflow-y-auto"
+        style={{ background: '#FAF7F0', maxHeight: '85vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: '#D4C4B0' }} />
+        </div>
+
+        <div className="px-6 pb-10">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 mb-4 mt-2">
+            <div className="flex-1">
+              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                {typeLabels[uitje.type] ?? uitje.type}
+              </span>
+              <h2 className="text-2xl font-bold text-on-surface leading-tight mt-1" style={{ fontFamily: 'var(--font-hand)' }}>
+                {uitje.name}
+              </h2>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
+                  🚗 {uitje.drive} vanuit Les Escaliers
+                </span>
+                {uitje.vegetarian && (
+                  <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>
+                    🌿 Vegetarisch
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: '#F0E9DA', color: '#6B5A3E' }}
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          {/* Description */}
+          <p className="text-sm leading-relaxed text-on-surface mb-5">{uitje.desc}</p>
+
+          {/* Wikipedia extract */}
+          {(wikiLoading || wikiExtract) && (
+            <div
+              className="rounded-2xl p-4 mb-5"
+              style={{ background: 'oklch(93% 0.05 40)', border: '1px solid oklch(57% 0.14 40 / 0.2)' }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                  Wikipedia
+                </span>
+                {wikiLoading && (
+                  <span className="material-symbols-outlined text-sm animate-spin" style={{ color: '#A8937A' }}>refresh</span>
+                )}
+              </div>
+              {wikiExtract && (
+                <p className="text-sm leading-relaxed text-on-surface">{wikiExtract}</p>
+              )}
+            </div>
+          )}
+
+          {/* Links */}
+          <div className="flex flex-col gap-2">
+            {uitje.wiki && (
+              <a
+                href={uitje.wiki}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
+                style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}
+              >
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+                Lees meer op Wikipedia
+                <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
+              </a>
+            )}
+            {uitje.site && (
+              <a
+                href={uitje.site}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
+                style={{ background: '#F0E9DA', color: 'oklch(57% 0.14 40)' }}
+              >
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>language</span>
+                Officiële website
+                <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
+              </a>
+            )}
+            <a
+              href={uitje.gmaps}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-sm"
+              style={{ background: 'oklch(92% 0.05 218)', color: 'oklch(65% 0.10 218)', border: '1px solid oklch(65% 0.10 218 / 0.2)' }}
+            >
+              <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>map</span>
+              Navigeer in Google Maps
+              <span className="material-symbols-outlined text-base ml-auto">open_in_new</span>
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1478,7 +1861,6 @@ function SluitDagAfModal({
           </button>
         </div>
 
-        {/* Gevolgd plan? */}
         <p className="text-sm font-semibold text-on-surface mb-3">Hebben jullie het plan gevolgd?</p>
         <div className="flex gap-3 mb-4">
           {[{ val: true, label: 'Ja, grotendeels' }, { val: false, label: 'Nee, anders gegaan' }].map(opt => (
@@ -1497,7 +1879,6 @@ function SluitDagAfModal({
           ))}
         </div>
 
-        {/* Vrije tekst als nee */}
         {followedPlan === false && (
           <div className="mb-4">
             <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: '#A8937A' }}>
@@ -1514,7 +1895,6 @@ function SluitDagAfModal({
           </div>
         )}
 
-        {/* Mood */}
         <p className="text-sm font-semibold text-on-surface mb-3">Hoe was de dag?</p>
         <div className="flex gap-2 mb-5">
           {MOODS.map(m => (
@@ -1534,7 +1914,6 @@ function SluitDagAfModal({
           ))}
         </div>
 
-        {/* Opslaan */}
         <button
           onClick={onSave}
           disabled={saving || (followedPlan === null)}
