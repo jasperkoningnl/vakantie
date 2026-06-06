@@ -1,3 +1,5 @@
+import { getParisDateString } from './date-utils'
+
 export type DagType = 'reisdag' | 'vakantie' | 'verblijf' | 'thuis'
 
 export interface Reisdag {
@@ -46,6 +48,6 @@ export const reiskalender: Record<string, KalenderEntry> = {
 }
 
 export function getTodayEntry(): KalenderEntry | null {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getParisDateString()
   return reiskalender[today] ?? null
 }
