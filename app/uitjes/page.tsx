@@ -378,17 +378,36 @@ export default function UitjesPage() {
                 )}
               </div>
 
+              {/* Kies als bestemming */}
+              <button
+                onClick={() => {
+                  const saved = localStorage.getItem('dagplan_basket')
+                  const basket: string[] = saved ? JSON.parse(saved) : []
+                  if (!basket.includes(detailUitje.id)) {
+                    basket.push(detailUitje.id)
+                    localStorage.setItem('dagplan_basket', JSON.stringify(basket))
+                  }
+                  localStorage.setItem('dagplan_destination', detailUitje.id)
+                  window.location.href = '/vandaag'
+                }}
+                className="w-full mt-4 rounded-2xl py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all"
+                style={{ background: TYPE_COLORS[detailUitje.type] || 'oklch(57% 0.14 40)', color: 'white' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>flag</span>
+                Kies als bestemming
+              </button>
+
               {/* Basket button */}
               <button
                 onClick={() => toggleBasket(detailUitje.id)}
-                className="w-full mt-4 rounded-2xl py-3 text-sm font-bold transition-all"
+                className="w-full mt-2 rounded-2xl py-3 text-sm font-bold transition-all"
                 style={
                   basketIds.includes(detailUitje.id)
-                    ? { background: 'oklch(57% 0.14 40)', color: 'white' }
-                    : { background: '#F0E9DA', color: 'oklch(57% 0.14 40)', border: '1px solid #E4D9C8' }
+                    ? { background: 'oklch(93% 0.05 40)', color: 'oklch(57% 0.14 40)', border: '1.5px solid oklch(57% 0.14 40 / 0.4)' }
+                    : { background: '#F0E9DA', color: '#6B5A3E', border: '1px solid #E4D9C8' }
                 }
               >
-                {basketIds.includes(detailUitje.id) ? '✓ Toegevoegd aan vandaag' : 'Voeg toe aan vandaag'}
+                {basketIds.includes(detailUitje.id) ? '✓ Toegevoegd als tussenstop' : 'Voeg toe als tussenstop'}
               </button>
             </div>
           </div>
