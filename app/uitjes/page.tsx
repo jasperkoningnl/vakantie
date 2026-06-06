@@ -243,7 +243,7 @@ export default function UitjesPage() {
       {/* Detail bottom sheet */}
       {detailUitje && (
         <div
-          className="fixed inset-0 z-50 flex items-end"
+          className="fixed inset-0 z-[60] flex items-end"
           style={{ background: 'rgba(44,35,22,0.45)' }}
           onClick={() => setDetailUitje(null)}
         >
