@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan } from '@/lib/types'
+import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop } from '@/lib/types'
 import { uitjes, Uitje } from '@/lib/uitjes'
 import { marktdagen } from '@/lib/marktdagen'
 import { reiskalender, Reisdag, KalenderEntry } from '@/lib/reiskalender'
@@ -25,7 +25,7 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
-type Phase = 'build' | 'select' | 'confirm' | 'planning' | 'edit' | 'plan'
+type Phase = 'build' | 'select' | 'confirm' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
 interface Tussenstop { naam: string; beschrijving: string; gmaps: string }
@@ -94,6 +94,34 @@ function buildGoogleMapsUrl(ids: string[]): string {
     .map(u => `${u!.coords[0]},${u!.coords[1]}`)
   if (stops.length === 0) return `https://www.google.com/maps/search/?api=1&query=Les+Escaliers+Porte-du-Quercy`
   return `https://www.google.com/maps/dir/${base}/${stops.join('/')}/${base}`
+}
+
+function sortByRoute(stops: Uitje[], destinationId: string): Uitje[] {
+  const dest = stops.find(u => u.id === destinationId)
+  const others = stops.filter(u => u.id !== destinationId)
+  if (!dest) return stops
+  const rv: [number, number] = [dest.coords[0] - HOME_COORDS[0], dest.coords[1] - HOME_COORDS[1]]
+  const lenSq = rv[0] ** 2 + rv[1] ** 2
+  const proj = (u: Uitje) => {
+    const v = [u.coords[0] - HOME_COORDS[0], u.coords[1] - HOME_COORDS[1]]
+    return (v[0] * rv[0] + v[1] * rv[1]) / lenSq
+  }
+  return [...others.sort((a, b) => proj(a) - proj(b)), dest]
+}
+
+function buildLocalPlan(ids: string[], destinationId: string | null): DayPlan {
+  const stops = ids.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
+  const sorted = destinationId ? sortByRoute(stops, destinationId) : stops
+  const slots = ['9:30', '11:00', '12:30', '14:30', '16:00']
+  const planStops: DayPlanStop[] = sorted.map((u, i) => ({
+    time: slots[Math.min(i, slots.length - 1)],
+    name: u.name,
+    description: u.desc,
+    mapsUrl: u.gmaps,
+    coords: u.coords,
+    isTip: false,
+  }))
+  return { stops: planStops, checklist: [] }
 }
 
 async function getVisitedNames(): Promise<string[]> {
@@ -218,46 +246,21 @@ export default function VandaagPage() {
     setPhase('select')
   }
 
-  const handlePlan = async (forDate: string, ids: string[]) => {
-    setError(null)
-    if (forDate === today) setPhase('planning')
-    else setTomorrowPlanning(true)
-
-    const visitedNames = await getVisitedNames()
-    try {
-      const res = await fetch('/api/plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phase: 'plan',
-          activity: selectedCats.join(', ') || 'surprise',
-          driveTime: 'Max 2 uur',
-          weather: weatherDesc,
-          selectedIds: ids,
-          visitedNames,
-        }),
-      })
-      if (!res.ok) throw new Error(`Server: ${res.status}`)
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-
-      if (forDate === today) {
-        // Go to edit phase — don't save yet, let user confirm
-        setEditPlan(data)
-        setPhase('edit')
-      } else {
-        // For tomorrow: save directly
+  const handlePlan = async (forDate: string, ids: string[], destinationId: string | null = null) => {
+    const plan = buildLocalPlan(ids, destinationId)
+    if (forDate === today) {
+      setEditPlan(plan)
+      setPhase('edit')
+    } else {
+      setTomorrowPlanning(true)
+      try {
         await getSupabase().from('diary_entries').upsert(
-          { date: forDate, plan_text: JSON.stringify(data) },
+          { date: forDate, plan_text: JSON.stringify(plan) },
           { onConflict: 'date' }
         )
-        setTomorrowPlan(data)
-        setTomorrowPlanning(false)
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Er ging iets mis. Probeer opnieuw.')
-      if (forDate === today) setPhase('confirm')
-      else setTomorrowPlanning(false)
+        setTomorrowPlan(plan)
+      } catch { /* ignore */ }
+      setTomorrowPlanning(false)
     }
   }
 
@@ -436,18 +439,10 @@ export default function VandaagPage() {
           {phase === 'confirm' && (
             <ConfirmPhase
               basketIds={basketIds}
-              onConfirm={() => handlePlan(today, basketIds)}
+              onConfirm={(sortedIds, destId) => handlePlan(today, sortedIds, destId)}
               onBack={() => setPhase('select')}
               onReset={reset}
             />
-          )}
-
-          {phase === 'planning' && (
-            <div className="text-center py-16">
-              <span className="material-symbols-outlined text-5xl animate-spin" style={{ color: 'oklch(57% 0.14 40)' }}>refresh</span>
-              <p className="mt-4 font-semibold text-on-surface">Dagplan samenstellen…</p>
-              <p className="text-sm text-on-surface-variant mt-1">Even geduld, dit duurt 10–20 seconden</p>
-            </div>
           )}
 
           {phase === 'edit' && editPlan && (
@@ -1058,12 +1053,16 @@ function ConfirmPhase({
   onReset,
 }: {
   basketIds: string[]
-  onConfirm: () => void
+  onConfirm: (sortedIds: string[], destinationId: string | null) => void
   onBack: () => void
   onReset: () => void
 }) {
-  const selectedUitjes = basketIds.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
-  const mapsUrl = buildGoogleMapsUrl(basketIds)
+  const [destinationId, setDestinationId] = useState<string | null>(null)
+
+  const allStops = basketIds.map(id => uitjes.find(u => u.id === id)).filter(Boolean) as Uitje[]
+  const sortedStops = destinationId ? sortByRoute(allStops, destinationId) : allStops
+  const sortedIds = sortedStops.map(u => u.id)
+  const mapsUrl = buildGoogleMapsUrl(sortedIds)
 
   return (
     <div>
@@ -1075,24 +1074,36 @@ function ConfirmPhase({
       <h2 className="text-2xl mb-1 leading-tight" style={{ fontFamily: 'var(--font-hand)', color: '#2C2316' }}>
         Jouw dag
       </h2>
-      <p className="text-xs text-on-surface-variant mb-5">
-        Dit zijn de gekozen stops. Bevestig om een dagplan te genereren.
+      <p className="text-xs text-on-surface-variant mb-4">
+        Tik op een stop om die als bestemming van de dag te kiezen — de andere stops worden automatisch op de route geordend.
       </p>
 
       <div className="flex flex-col gap-3 mb-5">
-        {selectedUitjes.map((u, i) => {
+        <div className="flex items-center gap-3 px-1 py-1.5">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'oklch(92% 0.05 148)', border: '2px solid oklch(58% 0.10 148)' }}>
+            🏠
+          </div>
+          <p className="text-sm font-semibold" style={{ color: 'oklch(40% 0.08 148)' }}>Les Escaliers (start &amp; thuiskomst)</p>
+        </div>
+
+        {sortedStops.map((u, i) => {
+          const isDest = u.id === destinationId
           const isMarktVandaag = isTodayMarkt(u)
           return (
-            <div
+            <button
               key={u.id}
-              className="rounded-2xl p-4 flex items-start gap-3 shadow-blue"
-              style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+              onClick={() => setDestinationId(prev => prev === u.id ? null : u.id)}
+              className="rounded-2xl p-4 flex items-start gap-3 shadow-blue text-left w-full transition-all"
+              style={{
+                background: isDest ? 'oklch(93% 0.05 40)' : '#FAF7F0',
+                border: `2px solid ${isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8'}`,
+              }}
             >
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white"
-                style={{ background: 'oklch(57% 0.14 40)' }}
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                style={{ background: isDest ? 'oklch(57% 0.14 40)' : '#E4D9C8', color: isDest ? 'white' : '#6B5A3E' }}
               >
-                {i + 1}
+                {isDest ? '📍' : i + 1}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-on-surface">{u.name}</p>
@@ -1104,9 +1115,20 @@ function ConfirmPhase({
                       Markt!
                     </span>
                   )}
+                  {isDest && (
+                    <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}>
+                      Bestemming
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>
+              <span
+                className="material-symbols-outlined text-xl flex-shrink-0 mt-0.5"
+                style={{ color: isDest ? 'oklch(57% 0.14 40)' : '#D4C4B0', fontVariationSettings: isDest ? "'FILL' 1" : "'FILL' 0" }}
+              >
+                flag
+              </span>
+            </button>
           )
         })}
       </div>
@@ -1123,11 +1145,11 @@ function ConfirmPhase({
       </a>
 
       <button
-        onClick={onConfirm}
+        onClick={() => onConfirm(sortedIds, destinationId)}
         className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 mb-3"
         style={{ background: 'oklch(57% 0.14 40)' }}
       >
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
         Maak dagplan
       </button>
 
