@@ -157,8 +157,6 @@ export default function VandaagPage() {
   const [sluitSaving, setSluitSaving] = useState(false)
   const [sluitDone, setSluitDone] = useState(false)
   const [infoUitjeId, setInfoUitjeId] = useState<string | null>(null)
-  const [previewDate, setPreviewDate] = useState<string | null>(null)
-  const [showPreviewPicker, setShowPreviewPicker] = useState(false)
 
   const allUitjes = useMemo(() => [...uitjes, ...getTodayMarktdagen()], [])
 
@@ -166,7 +164,7 @@ export default function VandaagPage() {
   const tomorrow = getTomorrowDateStr()
   const todayEntry = reiskalender[today] ?? null
   const tomorrowEntry = reiskalender[tomorrow] ?? null
-  const activeEntry = previewDate ? (reiskalender[previewDate] ?? null) : todayEntry
+  const activeEntry = todayEntry
   const isReisdag = activeEntry?.type === 'reisdag'
   const after17 = isAfter17Paris()
   const showVertreklijst = new Date() < new Date('2025-06-13')
@@ -345,50 +343,19 @@ export default function VandaagPage() {
   const dateStr = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const rainWarning = getRainWarning(weather)
 
+  const showActionBar = !isReisdag && (
+    (phase === 'select' && !!mainDestinationId && !addStopMode) ||
+    (phase === 'select' && addStopMode) ||
+    phase === 'edit'
+  )
+
   return (
-    <div className="px-4 pt-5 pb-28">
-      <div className="mb-4 flex items-start justify-between">
-        <div>
-          <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
-            Notre Voyage
-          </div>
-          <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
+    <div className={`px-4 pt-5 ${showActionBar ? 'pb-[210px]' : 'pb-28'}`}>
+      <div className="mb-4">
+        <div className="text-xl font-semibold" style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}>
+          Notre Voyage
         </div>
-        <div className="relative">
-          <button
-            onClick={() => setShowPreviewPicker(v => !v)}
-            className="text-[10px] rounded-full px-2.5 py-1 mt-1"
-            style={{ background: previewDate ? 'oklch(93% 0.05 40)' : '#F0E9DA', color: previewDate ? 'oklch(40% 0.12 40)' : '#A8937A', border: previewDate ? '1px solid oklch(57% 0.14 40 / 0.3)' : 'none' }}
-          >
-            🧪 Preview
-          </button>
-          {showPreviewPicker && (
-            <div className="absolute right-0 top-9 z-40 rounded-2xl shadow-lg p-3" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8', minWidth: 220 }}>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#A8937A' }}>Preview reisdag</p>
-              <div className="flex flex-col gap-1.5">
-                {(Object.entries(reiskalender) as [string, KalenderEntry][]).filter(([, v]) => v.type === 'reisdag').map(([d, entry]) => (
-                  <button
-                    key={d}
-                    onClick={() => { setPreviewDate(previewDate === d ? null : d); setShowPreviewPicker(false) }}
-                    className="text-left rounded-xl px-3 py-2 text-xs font-semibold"
-                    style={{ background: previewDate === d ? 'oklch(93% 0.05 40)' : '#F5EFE3', color: previewDate === d ? 'oklch(40% 0.12 40)' : '#2C2316', border: previewDate === d ? '1px solid oklch(57% 0.14 40 / 0.3)' : '1px solid transparent' }}
-                  >
-                    {d} — {(entry as Reisdag).label}
-                  </button>
-                ))}
-                {previewDate && (
-                  <button
-                    onClick={() => { setPreviewDate(null); setShowPreviewPicker(false) }}
-                    className="rounded-xl px-3 py-2 text-xs font-semibold mt-1"
-                    style={{ background: '#FEF2F2', color: '#EF4444' }}
-                  >
-                    ✕ Sluit preview
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
       </div>
 
       <WeatherCard weather={weather} />
@@ -512,6 +479,58 @@ export default function VandaagPage() {
           showWizard={showTomorrowWizard}
           onToggleWizard={() => setShowTomorrowWizard(v => !v)}
         />
+      )}
+
+      {/* Fixed action bar — attached directly above the bottom nav */}
+      {showActionBar && (
+        <div
+          className="fixed inset-x-0 z-40 border-t"
+          style={{ bottom: 'calc(3.75rem + env(safe-area-inset-bottom, 0px))', background: '#F5EFE3', borderColor: '#E4D9C8' }}
+        >
+          <div className="max-w-md mx-auto px-4 py-3 flex flex-col gap-2">
+            {phase === 'select' && !addStopMode && (
+              <>
+                <button
+                  onClick={() => handlePlan(today, basketIds, mainDestinationId)}
+                  className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
+                  style={{ background: 'oklch(57% 0.14 40)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
+                  Maak dagplan
+                </button>
+                <button onClick={reset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ border: '2px solid #E4D9C8', color: '#A8937A' }}>
+                  Begin opnieuw
+                </button>
+              </>
+            )}
+            {phase === 'select' && addStopMode && (
+              <button
+                onClick={handleAddStopReturn}
+                className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
+                style={{ background: 'oklch(57% 0.14 40)' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                Klaar — terug naar plan
+              </button>
+            )}
+            {phase === 'edit' && editPlan && (
+              <>
+                <button
+                  onClick={() => handleConfirmPlan(editPlan)}
+                  disabled={editPlan.stops.length === 0}
+                  className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50"
+                  style={{ background: 'oklch(57% 0.14 40)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
+                  Bevestig als dagplan
+                </button>
+                <button onClick={reset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ border: '2px solid #E4D9C8', color: '#A8937A' }}>
+                  Opnieuw beginnen
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1025,42 +1044,6 @@ function SelectPhase({
         ))}
       </div>
 
-      {/* Bottom buttons — sticky so they stay reachable in long lists */}
-      {!addStopMode && mainDestinationId && (
-        <div className="sticky bottom-24 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 75%, transparent)' }}>
-          <div className="flex flex-col gap-3 pb-4">
-            <button
-              onClick={onConfirm}
-              className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
-              style={{ background: 'oklch(57% 0.14 40)' }}
-            >
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>checklist</span>
-              Maak dagplan
-            </button>
-            {onReset && (
-              <button
-                onClick={onReset}
-                className="w-full rounded-2xl py-3 text-sm font-semibold"
-                style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}
-              >
-                Begin opnieuw
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      {addStopMode && (
-        <div className="pb-4">
-          <button
-            onClick={onConfirm}
-            className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2"
-            style={{ background: 'oklch(57% 0.14 40)' }}
-          >
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-            Klaar — terug naar plan
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1261,17 +1244,6 @@ function EditPlanView({
         Voeg stop toe
       </button>
 
-      <div className="sticky bottom-24 pt-3" style={{ background: 'linear-gradient(to top, #F5EFE3 75%, transparent)' }}>
-        <div className="flex flex-col gap-3 pb-4">
-          <button onClick={onConfirm} disabled={plan.stops.length === 0} className="w-full rounded-2xl py-4 text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'oklch(57% 0.14 40)' }}>
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>celebration</span>
-            Bevestig als dagplan
-          </button>
-          <button onClick={onReset} className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: 'transparent', border: '2px solid #E4D9C8', color: '#A8937A' }}>
-            Opnieuw beginnen
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
