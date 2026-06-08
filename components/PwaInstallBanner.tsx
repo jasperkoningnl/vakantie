@@ -32,8 +32,8 @@ export default function PwaInstallBanner() {
     if (localStorage.getItem(DISMISS_KEY)) return;
 
     if (isIos()) {
-      setShowIosBanner(true);
-      return;
+      const timeout = window.setTimeout(() => setShowIosBanner(true), 0);
+      return () => window.clearTimeout(timeout);
     }
 
     const handler = (e: Event) => {
