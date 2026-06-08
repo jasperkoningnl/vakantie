@@ -2,7 +2,9 @@ import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
 import type { JWT } from 'next-auth/jwt'
 
-const TOKEN_REFRESH_BUFFER_SECONDS = 60
+const GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS = 21 * 24 * 60 * 60
+const GOOGLE_ACCESS_TOKEN_FALLBACK_TTL_SECONDS = 60 * 60
+const TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60
 
 type GoogleTokenRefreshResponse = {
   access_token?: string
@@ -10,6 +12,18 @@ type GoogleTokenRefreshResponse = {
   refresh_token?: string
   error?: string
   error_description?: string
+}
+
+function getAccessTokenExpiresAt(
+  accountExpiresAt?: number,
+  accountExpiresIn?: number,
+) {
+  if (accountExpiresAt) return accountExpiresAt
+
+  return (
+    Math.floor(Date.now() / 1000) +
+    (accountExpiresIn ?? GOOGLE_ACCESS_TOKEN_FALLBACK_TTL_SECONDS)
+  )
 }
 
 function clearAccessToken(token: JWT, error: JWT['error']) {
@@ -75,12 +89,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  session: {
+    strategy: 'jwt',
+    maxAge: GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS,
+  },
   callbacks: {
     async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token
         token.refreshToken = account.refresh_token ?? token.refreshToken
-        token.expiresAt = account.expires_at
+        token.expiresAt = getAccessTokenExpiresAt(
+          account.expires_at,
+          account.expires_in,
+        )
         token.error = undefined
       }
 
