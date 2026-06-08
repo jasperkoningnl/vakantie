@@ -1,35 +1,64 @@
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_PAGES = `pages-${CACHE_VERSION}`;
 const CACHE_STATIC = `static-${CACHE_VERSION}`;
-const EXPECTED_CACHES = [CACHE_PAGES, CACHE_STATIC];
-const LEGACY_CACHES = ['pages-v1', 'static-v1', 'external-v1', 'pages-v2', 'static-v2', 'external-v2'];
+const CACHE_RSC = `rsc-${CACHE_VERSION}`;
+const EXPECTED_CACHES = [CACHE_PAGES, CACHE_STATIC, CACHE_RSC];
+const LEGACY_CACHES = ['pages-v1', 'static-v1', 'external-v1', 'pages-v2', 'static-v2', 'external-v2', 'pages-v3', 'static-v3'];
 
 const OFFLINE_STALE_MESSAGE = 'offline data mogelijk verouderd';
-const SHELL_PAGES = ['/', '/nood', '/route', '/vandaag'];
+const SHELL_PAGES = ['/', '/vandaag', '/uitjes', '/dagboek', '/vertreklijst', '/nood', '/route'];
+const PRECACHE_ASSETS = [
+  '/manifest.json',
+  '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/favicon.ico',
+  '/file.svg',
+  '/globe.svg',
+  '/next.svg',
+  '/vercel.svg',
+  '/window.svg',
+];
 const NON_CACHEABLE_API_PATHS = ['/api/diary', '/api/photos', '/api/safe-arrival'];
 const PROTECTED_PATHS = ['/medisch', '/voor-thuis', '/api/'];
+const GOOGLE_FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 // ---------------------------------------------------------------------------
-// Install – pre-cache only static shell pages, skip waiting immediately
+// Install – pre-cache the public app shell and static public assets.
 // ---------------------------------------------------------------------------
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_PAGES).then((cache) =>
-      Promise.allSettled(
-        SHELL_PAGES.map((url) =>
-          fetch(url, { cache: 'reload' })
-            .then((res) => {
-              if (res.ok) cache.put(url, res);
-            })
-            .catch(() => {/* ignore network errors during install */})
+    Promise.all([
+      caches.open(CACHE_PAGES).then((cache) =>
+        Promise.allSettled(
+          SHELL_PAGES.map((url) =>
+            fetch(url, { cache: 'reload' })
+              .then((res) => {
+                if (res.ok || res.type === 'opaqueredirect') {
+                  cache.put(shellCacheKeyFromPath(url), res);
+                }
+              })
+              .catch(() => {/* ignore network errors during install */})
+          )
         )
-      )
-    ).then(() => self.skipWaiting())
+      ),
+      caches.open(CACHE_STATIC).then((cache) =>
+        Promise.allSettled(
+          PRECACHE_ASSETS.map((url) =>
+            fetch(url, { cache: 'reload' })
+              .then((res) => {
+                if (res.ok) cache.put(url, res);
+              })
+              .catch(() => {/* ignore network errors during install */})
+          )
+        )
+      ),
+    ]).then(() => self.skipWaiting())
   );
 });
 
 // ---------------------------------------------------------------------------
-// Activate – explicitly delete old cache versions and previously cached private data
+// Activate – explicitly delete old cache versions and previously cached private data.
 // ---------------------------------------------------------------------------
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -56,33 +85,56 @@ self.addEventListener('fetch', (event) => {
   // Skip non-http(s) requests (chrome-extension://, etc.)
   if (!url.protocol.startsWith('http')) return;
 
+  if (request.method !== 'GET') {
+    event.respondWith(networkOnly(request));
+    return;
+  }
+
   const isExternal = url.origin !== self.location.origin;
 
-  // 1. Next.js immutable static assets – cache-first
-  if (request.method === 'GET' && isImmutableNextAsset(url)) {
+  // 1. Next.js immutable static assets – cache-first.
+  if (isImmutableNextAsset(url)) {
     event.respondWith(cacheFirst(request, CACHE_STATIC));
     return;
   }
 
-  // 2. External hostnames – network-only; do not cache third-party data/assets
+  // 2. Google icon/font stylesheets and font files – stale-while-revalidate for offline UI icons.
+  if (isGoogleFontAsset(url)) {
+    event.respondWith(staleWhileRevalidate(request, CACHE_STATIC));
+    return;
+  }
+
+  // 3. External hostnames – network-only; do not cache third-party API data/assets.
   if (isExternal) {
     event.respondWith(networkOnly(request));
     return;
   }
 
-  // 3. API routes – network-only; diary/photos/safe-arrival are explicitly non-cacheable
+  // 4. API routes – network-only; diary/photos/safe-arrival are explicitly non-cacheable.
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkOnlyApi(request));
     return;
   }
 
-  // 4. Navigation requests – cache only known static shell pages
+  // 5. Next.js App Router RSC/data requests – network-first, cached per public pathname.
+  if (isRscRequest(request, url)) {
+    event.respondWith(networkFirstRsc(request));
+    return;
+  }
+
+  // 6. Navigation requests – network-first for public shell pages.
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstShellPage(request));
     return;
   }
 
-  // 5. Everything else – network-only. Only shell pages and immutable Next assets are cached.
+  // 7. Same-origin static assets from /public – cache-first.
+  if (isSameOriginStaticAsset(request, url)) {
+    event.respondWith(cacheFirst(request, CACHE_STATIC));
+    return;
+  }
+
+  // 8. Everything else – network-only. Only public shell pages and static assets are cached.
   event.respondWith(networkOnly(request));
 });
 
@@ -90,18 +142,43 @@ self.addEventListener('fetch', (event) => {
 // Strategy helpers
 // ---------------------------------------------------------------------------
 
-/** Cache-first: return cached immutable asset, or fetch & store on miss. */
+/** Cache-first: return cached immutable/static asset, or fetch & store on miss. */
 async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request);
+  const cached = await caches.match(request, { ignoreSearch: false });
   if (cached) return cached;
 
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(cacheName);
-    cache.put(request, response.clone());
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+
+    return response;
+  } catch {
+    return offlineFallbackResponse(request);
+  }
+}
+
+/** Stale-while-revalidate: keep font/icon CSS available offline without blocking fresh updates. */
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request, { ignoreSearch: false });
+
+  const fresh = fetch(request)
+    .then((response) => {
+      if (response.ok || response.type === 'opaque') cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    eventWaitUntilSafe(fresh);
+    return cached;
   }
 
-  return response;
+  const response = await fresh;
+  return response || offlineFallbackResponse(request);
 }
 
 /** Network-only for all non-cacheable requests. */
@@ -136,21 +213,50 @@ async function networkOnlyApi(request) {
   }
 }
 
+/** Network-first for RSC/data requests; cached offline fallback is marked as possibly stale. */
+async function networkFirstRsc(request) {
+  const url = new URL(request.url);
+
+  if (!isShellPage(url) || isProtectedNavigation(request)) {
+    return networkOnly(request);
+  }
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_RSC);
+      cache.put(rscCacheKey(url), response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(rscCacheKey(url));
+    if (cached) return markOfflineFallback(cached);
+    return offlineFallbackResponse(request);
+  }
+}
+
 /** Network-first for shell pages; cached offline fallback is marked as possibly stale. */
 async function networkFirstShellPage(request) {
   const url = new URL(request.url);
 
+  if (!isShellPage(url) || isProtectedNavigation(request)) {
+    return networkOnly(request);
+  }
+
   try {
     const response = await fetch(request);
-    if (response.ok && request.method === 'GET' && isShellPage(url) && !isProtectedNavigation(request)) {
+    if (response.ok || response.type === 'opaqueredirect') {
       const cache = await caches.open(CACHE_PAGES);
       cache.put(shellCacheKey(url), response.clone());
     }
     return response;
   } catch {
-    if (isShellPage(url)) {
-      const cached = await caches.match(shellCacheKey(url));
-      if (cached) return markOfflineFallback(cached);
+    const cached = await caches.match(shellCacheKey(url));
+    if (cached) return markOfflineFallback(cached);
+
+    if (normalizePathname(url.pathname) === '/') {
+      const homeFallback = await caches.match('/vandaag');
+      if (homeFallback) return markOfflineFallback(homeFallback);
     }
 
     return offlineFallbackResponse(request);
@@ -161,12 +267,40 @@ function isImmutableNextAsset(url) {
   return url.origin === self.location.origin && url.pathname.startsWith('/_next/static/');
 }
 
+function isGoogleFontAsset(url) {
+  return GOOGLE_FONT_HOSTS.includes(url.hostname);
+}
+
+function isSameOriginStaticAsset(request, url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith('/_next/')) return true;
+  if (PRECACHE_ASSETS.includes(url.pathname)) return true;
+
+  const staticDestinations = ['font', 'image', 'script', 'style'];
+  if (staticDestinations.includes(request.destination)) return true;
+
+  return /\.(?:css|js|mjs|png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|otf|json|webmanifest)$/i.test(url.pathname);
+}
+
+function isRscRequest(request, url) {
+  return request.headers.get('RSC') === '1' || url.searchParams.has('_rsc');
+}
+
 function isShellPage(url) {
   return SHELL_PAGES.includes(normalizePathname(url.pathname));
 }
 
 function shellCacheKey(url) {
-  return normalizePathname(url.pathname);
+  return shellCacheKeyFromPath(url.pathname);
+}
+
+function shellCacheKeyFromPath(pathname) {
+  const normalized = normalizePathname(pathname);
+  return normalized === '/' ? '/' : normalized;
+}
+
+function rscCacheKey(url) {
+  return `/__rsc${normalizePathname(url.pathname)}`;
 }
 
 function normalizePathname(pathname) {
@@ -241,7 +375,7 @@ function offlineFallbackResponse(request) {
 
   if (request.mode === 'navigate' || accept.includes('text/html')) {
     return new Response(
-      `<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body><main style="font-family:system-ui,sans-serif;margin:2rem;max-width:42rem"><h1>Offline</h1><p>${OFFLINE_STALE_MESSAGE}</p></main></body></html>`,
+      `<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body><main style="font-family:system-ui,sans-serif;margin:2rem;max-width:42rem"><h1>Offline</h1><p>${OFFLINE_STALE_MESSAGE}</p><p>Open de app één keer online om pagina's voor offline gebruik op te slaan.</p></main></body></html>`,
       {
         status: 503,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -253,4 +387,10 @@ function offlineFallbackResponse(request) {
     status: 503,
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
+}
+
+function eventWaitUntilSafe(promise) {
+  if (typeof self.registration !== 'undefined' && promise) {
+    promise.catch(() => {/* ignore background revalidation errors */});
+  }
 }
