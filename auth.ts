@@ -2,7 +2,7 @@ import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
 import type { JWT } from 'next-auth/jwt'
 
-const GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS = 21 * 24 * 60 * 60
+const GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 const GOOGLE_ACCESS_TOKEN_FALLBACK_TTL_SECONDS = 60 * 60
 const TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60
 
@@ -81,7 +81,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/photoslibrary.readonly',
+          scope: 'openid email profile https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
           access_type: 'offline',
           prompt: 'consent',
           response_type: 'code',
