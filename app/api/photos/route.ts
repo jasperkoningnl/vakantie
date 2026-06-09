@@ -9,6 +9,7 @@ type GooglePickerError = {
   error?: {
     message?: string
     status?: string
+    details?: Array<{ reason?: string }>
   }
 }
 
@@ -40,10 +41,23 @@ type PickedMediaItem = {
 function pickerAuthError(status = 401) {
   return NextResponse.json(
     {
-      error: 'Google Photos moet opnieuw gekoppeld worden met de nieuwe Google Photos Picker-toegang.',
+      error: 'Google Photos moet opnieuw gekoppeld worden om foto’s te kunnen kiezen.',
       code: 'GOOGLE_PHOTOS_RECONNECT_REQUIRED',
     },
     { status },
+  )
+}
+
+function needsGooglePhotosReconnect(status: number, data: GooglePickerError) {
+  const googleStatus = data.error?.status
+  const message = data.error?.message?.toLowerCase() ?? ''
+  const detailReasons = data.error?.details?.map(detail => detail.reason?.toLowerCase() ?? '') ?? []
+
+  return (
+    status === 401 ||
+    googleStatus === 'UNAUTHENTICATED' ||
+    message.includes('insufficient authentication scopes') ||
+    detailReasons.some(reason => reason.includes('access_token_scope_insufficient'))
   )
 }
 
@@ -123,7 +137,7 @@ export async function POST() {
   })
 
   const data = await res.json().catch(() => ({})) as PickerSession & GooglePickerError
-  if (res.status === 401 || res.status === 403) return pickerAuthError(res.status)
+  if (needsGooglePhotosReconnect(res.status, data)) return pickerAuthError(res.status)
   if (!res.ok) return googlePhotosError(res.status, data)
 
   return NextResponse.json({
@@ -145,7 +159,7 @@ export async function GET(req: NextRequest) {
   if (!sessionId) {
     return NextResponse.json(
       {
-        error: 'Google Photos kan niet meer automatisch per datum zoeken. Kies de foto’s zelf via de Google Photos Picker.',
+        error: 'Start eerst een Google Photos-kiezer om foto’s te selecteren.',
         code: 'GOOGLE_PHOTOS_PICKER_REQUIRED',
       },
       { status: 400 },
@@ -157,7 +171,7 @@ export async function GET(req: NextRequest) {
   })
 
   const session = await sessionRes.json().catch(() => ({})) as PickerSession & GooglePickerError
-  if (sessionRes.status === 401 || sessionRes.status === 403) return pickerAuthError(sessionRes.status)
+  if (needsGooglePhotosReconnect(sessionRes.status, session)) return pickerAuthError(sessionRes.status)
   if (!sessionRes.ok) return googlePhotosError(sessionRes.status, session)
 
   if (!session.mediaItemsSet) {

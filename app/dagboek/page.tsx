@@ -105,6 +105,20 @@ const getResponseError = async (res: Response, fallback: string) => {
   return fallback
 }
 
+const isGooglePhotosReconnectRequired = async (res: Response) => {
+  try {
+    const data: unknown = await res.clone().json()
+    return (
+      data &&
+      typeof data === 'object' &&
+      'code' in data &&
+      data.code === 'GOOGLE_PHOTOS_RECONNECT_REQUIRED'
+    )
+  } catch {
+    return false
+  }
+}
+
 export default function DagboekPage() {
   const { data: session } = useSession()
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({})
@@ -172,8 +186,6 @@ export default function DagboekPage() {
     )
   }
 
-
-
   const startPhotoPicker = async (date: string) => {
     if (!session?.accessToken || photosAuthError) {
       reconnectGooglePhotos()
@@ -185,7 +197,7 @@ export default function DagboekPage() {
     try {
       const res = await fetch('/api/photos', { method: 'POST' })
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+        if (await isGooglePhotosReconnectRequired(res)) setPhotosAuthError(true)
         throw new Error(await getResponseError(res, 'Google Photos Picker starten mislukt.'))
       }
 
@@ -218,7 +230,7 @@ export default function DagboekPage() {
       try {
         const res = await fetch(`/api/photos?sessionId=${encodeURIComponent(sessionId)}`)
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+          if (await isGooglePhotosReconnectRequired(res)) setPhotosAuthError(true)
           throw new Error(await getResponseError(res, 'Google Photos selectie ophalen mislukt.'))
         }
 

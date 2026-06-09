@@ -44,6 +44,20 @@ const parsePhotoPickerDurationMs = (duration?: string) => {
   return Math.min(Math.max(seconds * 1000, 1500), 10000)
 }
 
+const isGooglePhotosReconnectRequired = async (res: Response) => {
+  try {
+    const data: unknown = await res.clone().json()
+    return (
+      data &&
+      typeof data === 'object' &&
+      'code' in data &&
+      data.code === 'GOOGLE_PHOTOS_RECONNECT_REQUIRED'
+    )
+  } catch {
+    return false
+  }
+}
+
 type Phase = 'select' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
@@ -1594,7 +1608,7 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
     try {
       const res = await fetch('/api/photos', { method: 'POST' })
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+        if (await isGooglePhotosReconnectRequired(res)) setPhotosAuthError(true)
         throw new Error('Google Photos Picker starten mislukt.')
       }
 
@@ -1623,7 +1637,7 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
       try {
         const res = await fetch(`/api/photos?sessionId=${encodeURIComponent(sessionId)}`)
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+          if (await isGooglePhotosReconnectRequired(res)) setPhotosAuthError(true)
           throw new Error('Google Photos selectie ophalen mislukt.')
         }
 

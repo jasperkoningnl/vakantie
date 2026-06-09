@@ -2,7 +2,7 @@ import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
 import type { JWT } from 'next-auth/jwt'
 
-const GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS = 21 * 24 * 60 * 60
+const GOOGLE_PHOTOS_CONNECTION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 const GOOGLE_ACCESS_TOKEN_FALLBACK_TTL_SECONDS = 60 * 60
 const TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60
 
