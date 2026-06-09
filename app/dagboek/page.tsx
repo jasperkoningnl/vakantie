@@ -114,6 +114,7 @@ export default function DagboekPage() {
   const [generatingVerhaal, setGeneratingVerhaal] = useState(false)
   const [showVerhaal, setShowVerhaal] = useState(false)
   const [photosAuthError, setPhotosAuthError] = useState(false)
+  const [photosUnavailable, setPhotosUnavailable] = useState(false)
 
   useEffect(() => {
     const loadDiary = async () => {
@@ -168,6 +169,12 @@ export default function DagboekPage() {
       } else {
         if (res.status === 401) {
           setPhotosAuthError(true)
+        } else if (res.status === 403) {
+          const data = await res.json().catch(() => null)
+          if (data?.code === 'GOOGLE_PHOTOS_LIBRARY_API_UNAVAILABLE') {
+            setPhotosUnavailable(true)
+            setPhotosAuthError(false)
+          }
         }
         setPhotos(prev => ({ ...prev, [date]: [] }))
       }
@@ -351,7 +358,7 @@ export default function DagboekPage() {
       )}
 
       {/* Google Photos connected */}
-      {session?.accessToken && !photosAuthError && (
+      {session?.accessToken && !photosAuthError && !photosUnavailable && (
         <div
           className="rounded-2xl p-3 mb-4 flex items-center gap-3"
           style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
@@ -364,8 +371,25 @@ export default function DagboekPage() {
         </div>
       )}
 
+      {photosUnavailable && (
+        <div
+          className="rounded-2xl p-4 mb-5"
+          style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}
+        >
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-3xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>photo_library</span>
+            <div className="flex-1">
+              <p className="font-semibold text-on-surface">Google Photos automatisch laden is gestopt</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                De koppeling is niet uitgelogd, maar Google blokkeert sinds 2025 het automatisch zoeken in je volledige Photos-bibliotheek per datum voor apps. Je dagboek blijft gewoon werken zonder foto&apos;s.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Google Photos reconnect */}
-      {session && (!session.accessToken || photosAuthError) && (
+      {session && !photosUnavailable && (!session.accessToken || photosAuthError) && (
         <div
           className="rounded-2xl p-4 mb-5"
           style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}
@@ -487,7 +511,7 @@ export default function DagboekPage() {
               {isExpanded && (
                 <div className="px-4 pb-4" style={{ borderTop: '1px solid #E4D9C8' }}>
                   {/* Photo grid met selectie */}
-                  {session?.accessToken && !photosAuthError && (
+                  {session?.accessToken && !photosAuthError && !photosUnavailable && (
                     <div className="mt-3 mb-3">
                       {loadingPhotos === date ? (
                         <div className="flex items-center gap-2 text-xs text-on-surface-variant py-1">

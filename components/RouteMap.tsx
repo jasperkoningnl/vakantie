@@ -2,6 +2,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Map as LeafletMap } from 'leaflet'
+import { addReliableTileLayer, invalidateMapSizeSoon } from '@/components/leafletTiles'
 
 const HEEN_ROUTE: [number, number][] = [
   [52.155, 5.387],
@@ -45,10 +46,8 @@ export default function RouteMap() {
       const map = L.map(containerRef.current, { zoomControl: true }).setView([47.5, 2.5], 5)
       mapRef.current = map
 
-      L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenTopoMap contributors',
-        maxZoom: 17,
-      }).addTo(map)
+      addReliableTileLayer(L, map)
+      invalidateMapSizeSoon(map)
 
       L.polyline(HEEN_ROUTE, { color: '#4D96FF', weight: 3, opacity: 0.85 }).addTo(map)
       L.polyline(TERUG_ROUTE, { color: '#FF6B6B', weight: 3, opacity: 0.85, dashArray: '8 6' }).addTo(map)

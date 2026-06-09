@@ -2,6 +2,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Map as LeafletMap } from 'leaflet'
+import { addReliableTileLayer, invalidateMapSizeSoon } from '@/components/leafletTiles'
 
 const HOME_COORDS: [number, number] = [44.398, 1.119]
 
@@ -29,10 +30,8 @@ export default function DagRouteMap({ stops }: Props) {
       const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true })
       mapRef.current = map
 
-      L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenTopoMap contributors',
-        maxZoom: 17,
-      }).addTo(map)
+      addReliableTileLayer(L, map)
+      invalidateMapSizeSoon(map)
 
       const stopsWithCoords = stops.filter(s => s.coords)
       const routePoints: [number, number][] = [

@@ -2,6 +2,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Map as LeafletMap } from 'leaflet'
+import { addReliableTileLayer, invalidateMapSizeSoon } from '@/components/leafletTiles'
 
 interface LegMapProps {
   route: [number, number][]
@@ -23,9 +24,8 @@ export default function LegMap({ route, markers, color = '#4D96FF', dashed = fal
       const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false })
       mapRef.current = map
 
-      L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        maxZoom: 17,
-      }).addTo(map)
+      addReliableTileLayer(L, map)
+      invalidateMapSizeSoon(map)
 
       const polyline = L.polyline(route, {
         color,
