@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_PAGES = `pages-${CACHE_VERSION}`;
 const CACHE_STATIC = `static-${CACHE_VERSION}`;
 const CACHE_RSC = `rsc-${CACHE_VERSION}`;
 const EXPECTED_CACHES = [CACHE_PAGES, CACHE_STATIC, CACHE_RSC];
-const LEGACY_CACHES = ['pages-v1', 'static-v1', 'external-v1', 'pages-v2', 'static-v2', 'external-v2', 'pages-v3', 'static-v3'];
+const LEGACY_CACHES = ['pages-v1', 'static-v1', 'external-v1', 'pages-v2', 'static-v2', 'external-v2', 'pages-v3', 'static-v3', 'pages-v4', 'static-v4', 'rsc-v4'];
 
 const OFFLINE_STALE_MESSAGE = 'offline data mogelijk verouderd';
 const SHELL_PAGES = ['/', '/vandaag', '/uitjes', '/dagboek', '/vertreklijst', '/nood', '/route'];
@@ -21,7 +21,6 @@ const PRECACHE_ASSETS = [
 ];
 const NON_CACHEABLE_API_PATHS = ['/api/diary', '/api/photos', '/api/safe-arrival'];
 const PROTECTED_PATHS = ['/medisch', '/voor-thuis', '/api/'];
-const GOOGLE_FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 // ---------------------------------------------------------------------------
 // Install – pre-cache the public app shell and static public assets.
@@ -98,43 +97,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Google icon/font stylesheets and font files – stale-while-revalidate for offline UI icons.
-  if (isGoogleFontAsset(url)) {
-    event.respondWith(staleWhileRevalidate(request, CACHE_STATIC));
-    return;
-  }
-
-  // 3. External hostnames – network-only; do not cache third-party API data/assets.
+  // 2. External hostnames – network-only; do not cache third-party API data/assets.
   if (isExternal) {
     event.respondWith(networkOnly(request));
     return;
   }
 
-  // 4. API routes – network-only; diary/photos/safe-arrival are explicitly non-cacheable.
+  // 3. API routes – network-only; diary/photos/safe-arrival are explicitly non-cacheable.
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkOnlyApi(request));
     return;
   }
 
-  // 5. Next.js App Router RSC/data requests – network-first, cached per public pathname.
+  // 4. Next.js App Router RSC/data requests – network-first, cached per public pathname.
   if (isRscRequest(request, url)) {
     event.respondWith(networkFirstRsc(request));
     return;
   }
 
-  // 6. Navigation requests – network-first for public shell pages.
+  // 5. Navigation requests – network-first for public shell pages.
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstShellPage(request));
     return;
   }
 
-  // 7. Same-origin static assets from /public – cache-first.
+  // 6. Same-origin static assets from /public – cache-first.
   if (isSameOriginStaticAsset(request, url)) {
     event.respondWith(cacheFirst(request, CACHE_STATIC));
     return;
   }
 
-  // 8. Everything else – network-only. Only public shell pages and static assets are cached.
+  // 7. Everything else – network-only. Only public shell pages and static assets are cached.
   event.respondWith(networkOnly(request));
 });
 
@@ -158,27 +151,6 @@ async function cacheFirst(request, cacheName) {
   } catch {
     return offlineFallbackResponse(request);
   }
-}
-
-/** Stale-while-revalidate: keep font/icon CSS available offline without blocking fresh updates. */
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request, { ignoreSearch: false });
-
-  const fresh = fetch(request)
-    .then((response) => {
-      if (response.ok || response.type === 'opaque') cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => null);
-
-  if (cached) {
-    eventWaitUntilSafe(fresh);
-    return cached;
-  }
-
-  const response = await fresh;
-  return response || offlineFallbackResponse(request);
 }
 
 /** Network-only for all non-cacheable requests. */
@@ -265,10 +237,6 @@ async function networkFirstShellPage(request) {
 
 function isImmutableNextAsset(url) {
   return url.origin === self.location.origin && url.pathname.startsWith('/_next/static/');
-}
-
-function isGoogleFontAsset(url) {
-  return GOOGLE_FONT_HOSTS.includes(url.hostname);
 }
 
 function isSameOriginStaticAsset(request, url) {
@@ -389,8 +357,3 @@ function offlineFallbackResponse(request) {
   });
 }
 
-function eventWaitUntilSafe(promise) {
-  if (typeof self.registration !== 'undefined' && promise) {
-    promise.catch(() => {/* ignore background revalidation errors */});
-  }
-}

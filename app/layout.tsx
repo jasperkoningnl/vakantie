@@ -1,29 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { DM_Sans, Cormorant_Garamond, Caveat } from 'next/font/google'
 import './globals.css'
 import { BottomNav } from '@/components/BottomNav'
 import { Providers } from '@/components/Providers'
 import SwRegistration from '@/components/SwRegistration'
 import PwaInstallBanner from '@/components/PwaInstallBanner'
-
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
-  variable: '--font-dm-sans',
-})
-
-const cormorant = Cormorant_Garamond({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
-  style: ['normal', 'italic'],
-  variable: '--font-cormorant',
-})
-
-const caveat = Caveat({
-  subsets: ['latin'],
-  weight: ['400', '600', '700'],
-  variable: '--font-caveat',
-})
+import { MaterialIconHydrator } from '@/components/MaterialIconHydrator'
 
 export const metadata: Metadata = {
   title: 'Notre Voyage',
@@ -38,12 +19,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="nl" className={`${dmSans.variable} ${cormorant.variable} ${caveat.variable} antialiased`}>
+    <html lang="nl" className="antialiased">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
-        />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#7C5F42" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -51,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-background text-on-surface min-h-screen">
         <SwRegistration />
+        <MaterialIconHydrator />
         <Providers>
           <PwaInstallBanner />
           <main className="max-w-md mx-auto min-h-screen pb-24">
