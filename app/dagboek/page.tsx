@@ -25,6 +25,21 @@ type DaySaveState = {
   error?: string
 }
 
+type PickerState = {
+  day: string
+  status: 'opening' | 'waiting'
+  sessionId?: string
+  message?: string
+}
+
+const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Kies in Google Photos de foto’s die bij deze dag horen. Na je keuze koppelen we ze aan dit dagboek-item.'
+
+const parseDurationMs = (duration?: string) => {
+  const seconds = Number(duration?.replace('s', ''))
+  if (!Number.isFinite(seconds) || seconds <= 0) return 3000
+  return Math.min(Math.max(seconds * 1000, 1500), 10000)
+}
+
 const SAVE_STATUS_LABELS: Record<SaveStatus, string> = {
   unsaved: 'Niet opgeslagen',
   saving: 'Opslaan…',
@@ -114,7 +129,7 @@ export default function DagboekPage() {
   const [generatingVerhaal, setGeneratingVerhaal] = useState(false)
   const [showVerhaal, setShowVerhaal] = useState(false)
   const [photosAuthError, setPhotosAuthError] = useState(false)
-  const [photosUnavailable, setPhotosUnavailable] = useState(false)
+  const [pickerState, setPickerState] = useState<PickerState | null>(null)
 
   useEffect(() => {
     const loadDiary = async () => {
@@ -157,32 +172,83 @@ export default function DagboekPage() {
     )
   }
 
-  const loadPhotos = async (date: string) => {
-    if (photos[date] !== undefined || !session?.accessToken) return
+
+
+  const startPhotoPicker = async (date: string) => {
+    if (!session?.accessToken || photosAuthError) {
+      reconnectGooglePhotos()
+      return
+    }
+
     setLoadingPhotos(date)
+    setPickerState({ day: date, status: 'opening' })
     try {
-      const res = await fetch(`/api/photos?date=${date}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPhotosAuthError(false)
-        setPhotos(prev => ({ ...prev, [date]: data }))
-      } else {
-        if (res.status === 401) {
-          setPhotosAuthError(true)
-        } else if (res.status === 403) {
-          const data = await res.json().catch(() => null)
-          if (data?.code === 'GOOGLE_PHOTOS_LIBRARY_API_UNAVAILABLE') {
-            setPhotosUnavailable(true)
-            setPhotosAuthError(false)
-          }
-        }
-        setPhotos(prev => ({ ...prev, [date]: [] }))
+      const res = await fetch('/api/photos', { method: 'POST' })
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+        throw new Error(await getResponseError(res, 'Google Photos Picker starten mislukt.'))
       }
-    } catch {
-      setPhotos(prev => ({ ...prev, [date]: [] }))
+
+      const data = await res.json()
+      if (!data?.sessionId || !data?.pickerUri) {
+        throw new Error('Google Photos gaf geen kiesvenster terug.')
+      }
+
+      window.open(data.pickerUri, '_blank', 'noopener,noreferrer')
+      setPickerState({
+        day: date,
+        status: 'waiting',
+        sessionId: data.sessionId,
+        message: 'Kies foto’s in het geopende Google Photos venster. We halen ze hier op zodra je klaar bent.',
+      })
+      pollPhotoPicker(date, data.sessionId, parseDurationMs(data.pollingConfig?.pollInterval))
+    } catch (error) {
+      setPickerState({
+        day: date,
+        status: 'waiting',
+        message: error instanceof Error ? error.message : 'Google Photos Picker starten mislukt.',
+      })
     } finally {
       setLoadingPhotos(null)
     }
+  }
+
+  const pollPhotoPicker = (date: string, sessionId: string, delayMs: number) => {
+    window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/photos?sessionId=${encodeURIComponent(sessionId)}`)
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+          throw new Error(await getResponseError(res, 'Google Photos selectie ophalen mislukt.'))
+        }
+
+        const data = await res.json()
+        if (!data.mediaItemsSet) {
+          setPickerState(prev => prev?.sessionId === sessionId ? {
+            ...prev,
+            message: 'Nog aan het wachten op je selectie in Google Photos…',
+          } : prev)
+          pollPhotoPicker(date, sessionId, parseDurationMs(data.pollingConfig?.pollInterval))
+          return
+        }
+
+        const pickedPhotos: PhotoMeta[] = Array.isArray(data.mediaItems) ? data.mediaItems : []
+        setPhotos(prev => ({ ...prev, [date]: pickedPhotos }))
+        setSelectedPhotoIds(prev => {
+          const updated = { ...prev, [date]: pickedPhotos.map(p => p.id) }
+          localStorage.setItem('dagboek_selected_photos', JSON.stringify(updated))
+          return updated
+        })
+        updateEntry(date, { photos: pickedPhotos })
+        setPhotosAuthError(false)
+        setPickerState(null)
+      } catch (error) {
+        setPickerState(prev => prev?.sessionId === sessionId ? {
+          ...prev,
+          message: error instanceof Error ? error.message : 'Google Photos selectie ophalen mislukt.',
+        } : prev)
+      }
+    }, delayMs)
   }
 
   const handleExpand = (date: string) => {
@@ -190,7 +256,6 @@ export default function DagboekPage() {
       setExpandedDay(null)
     } else {
       setExpandedDay(date)
-      loadPhotos(date)
     }
   }
 
@@ -358,7 +423,7 @@ export default function DagboekPage() {
       )}
 
       {/* Google Photos connected */}
-      {session?.accessToken && !photosAuthError && !photosUnavailable && (
+      {session?.accessToken && !photosAuthError && (
         <div
           className="rounded-2xl p-3 mb-4 flex items-center gap-3"
           style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)' }}
@@ -366,30 +431,14 @@ export default function DagboekPage() {
           <span className="material-symbols-outlined" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
           <div>
             <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Google Photos gekoppeld</p>
-            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om de foto&apos;s van die dag te zien.</p>
+            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om foto&apos;s in Google Photos te kiezen.</p>
           </div>
         </div>
       )}
 
-      {photosUnavailable && (
-        <div
-          className="rounded-2xl p-4 mb-5"
-          style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}
-        >
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-3xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>photo_library</span>
-            <div className="flex-1">
-              <p className="font-semibold text-on-surface">Google Photos automatisch laden is gestopt</p>
-              <p className="text-sm text-on-surface-variant mt-1">
-                De koppeling is niet uitgelogd, maar Google blokkeert sinds 2025 het automatisch zoeken in je volledige Photos-bibliotheek per datum voor apps. Je dagboek blijft gewoon werken zonder foto&apos;s.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Google Photos reconnect */}
-      {session && !photosUnavailable && (!session.accessToken || photosAuthError) && (
+      {session && (!session.accessToken || photosAuthError) && (
         <div
           className="rounded-2xl p-4 mb-5"
           style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}
@@ -399,7 +448,7 @@ export default function DagboekPage() {
             <div className="flex-1">
               <p className="font-semibold text-on-surface">Google Photos opnieuw verbinden</p>
               <p className="text-sm text-on-surface-variant mt-1">
-                Je Google Photos toegang is verlopen of mist. Verbind opnieuw om foto&apos;s bij je dagboek te laden.
+                Je Google Photos toegang is verlopen of mist. Verbind opnieuw om foto&apos;s bij je dagboek te kunnen kiezen.
               </p>
               <button
                 onClick={reconnectGooglePhotos}
@@ -425,7 +474,7 @@ export default function DagboekPage() {
             <div className="flex-1">
               <p className="font-semibold text-on-surface">Koppel Google Photos</p>
               <p className="text-sm text-on-surface-variant mt-1">
-                Koppel je Google account om foto&apos;s van de dag automatisch te zien bij elke dagboekkaart.
+                Koppel je Google account om per dag foto&apos;s te kiezen via Google Photos en ze aan je dagboek te bewaren.
               </p>
               <button
                 onClick={reconnectGooglePhotos}
@@ -510,74 +559,73 @@ export default function DagboekPage() {
 
               {isExpanded && (
                 <div className="px-4 pb-4" style={{ borderTop: '1px solid #E4D9C8' }}>
-                  {/* Photo grid met selectie */}
-                  {session?.accessToken && !photosAuthError && !photosUnavailable && (
-                    <div className="mt-3 mb-3">
-                      {loadingPhotos === date ? (
-                        <div className="flex items-center gap-2 text-xs text-on-surface-variant py-1">
-                          <span className="material-symbols-outlined text-base animate-spin">refresh</span>
-                          Foto&apos;s laden…
-                        </div>
-                      ) : dayPhotos.length > 0 ? (
-                        <>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
-                              Foto&apos;s ({(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length}/{dayPhotos.length} geselecteerd)
-                            </p>
-                            <button
-                              onClick={() => {
-                                const allIds = dayPhotos.map(p => p.id)
-                                const current = selectedPhotoIds[date] ?? allIds
-                                const allSelected = current.length === allIds.length
-                                const updated = { ...selectedPhotoIds, [date]: allSelected ? [] : allIds }
-                                setSelectedPhotoIds(updated)
-                                localStorage.setItem('dagboek_selected_photos', JSON.stringify(updated))
-                              }}
-                              className="text-[10px] font-semibold"
-                              style={{ color: 'oklch(65% 0.10 218)' }}
-                            >
-                              {(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length === dayPhotos.length ? 'Geen' : 'Alle'}
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {dayPhotos.map(p => {
-                              const allIds = dayPhotos.map(pp => pp.id)
-                              const isSelected = (selectedPhotoIds[date] ?? allIds).includes(p.id)
-                              return (
-                                <button
-                                  key={p.id}
-                                  onClick={() => togglePhotoSelection(date, p.id, allIds)}
-                                  className="relative aspect-square rounded-xl overflow-hidden"
-                                >
-                                  <img
-                                    src={`${p.baseUrl}=w200-h200-c`}
-                                    alt={p.filename}
-                                    className="w-full h-full object-cover transition-opacity"
-                                    style={{ opacity: isSelected ? 1 : 0.35 }}
-                                  />
-                                  <div
-                                    className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
-                                    style={isSelected
-                                      ? { background: 'oklch(58% 0.10 148)' }
-                                      : { background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)' }
-                                    }
-                                  >
-                                    {isSelected && (
-                                      <svg width="10" height="10" viewBox="0 0 10 10">
-                                        <path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </>
-                      ) : photos[date] !== undefined ? (
-                        <p className="text-xs text-on-surface-variant italic">Geen foto&apos;s op deze dag gevonden in Google Photos.</p>
-                      ) : null}
+                  {/* Google Photos Picker met selectie */}
+                  <div className="mt-3 mb-3 rounded-2xl p-3" style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.18)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>add_photo_alternate</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold" style={{ color: '#2C2316' }}>Foto&apos;s koppelen aan deze dag</p>
+                        <p className="text-[11px] text-on-surface-variant mt-1">{GOOGLE_PHOTOS_PICKER_EXPLANATION}</p>
+                        {photosAuthError && (
+                          <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om foto&apos;s te kunnen kiezen.</p>
+                        )}
+                        {pickerState?.day === date && pickerState.message && (
+                          <p className="text-[11px] mt-2" style={{ color: '#6B5A3E' }}>{pickerState.message}</p>
+                        )}
+                      </div>
                     </div>
-                  )}
+                    <button
+                      onClick={() => startPhotoPicker(date)}
+                      disabled={loadingPhotos === date || (pickerState?.day === date && Boolean(pickerState.sessionId))}
+                      className="mt-3 rounded-full text-white text-xs font-semibold px-4 py-2 disabled:opacity-60 flex items-center gap-2"
+                      style={{ background: 'oklch(57% 0.14 40)' }}
+                    >
+                      {loadingPhotos === date || (pickerState?.day === date && Boolean(pickerState.sessionId)) ? (
+                        <>
+                          <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
+                          Wachten op Google Photos…
+                        </>
+                      ) : photosAuthError ? 'Opnieuw verbinden' : dayPhotos.length > 0 ? "Andere foto\'s kiezen" : "Kies foto\'s in Google Photos"}
+                    </button>
+
+                    {dayPhotos.length > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#A8937A' }}>
+                            Foto&apos;s ({(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length}/{dayPhotos.length} geselecteerd)
+                          </p>
+                          <button
+                            onClick={() => {
+                              const allIds = dayPhotos.map(p => p.id)
+                              const current = selectedPhotoIds[date] ?? allIds
+                              const allSelected = current.length === allIds.length
+                              const updated = { ...selectedPhotoIds, [date]: allSelected ? [] : allIds }
+                              setSelectedPhotoIds(updated)
+                              localStorage.setItem('dagboek_selected_photos', JSON.stringify(updated))
+                            }}
+                            className="text-[10px] font-semibold"
+                            style={{ color: 'oklch(65% 0.10 218)' }}
+                          >
+                            {(selectedPhotoIds[date] ?? dayPhotos.map(p => p.id)).length === dayPhotos.length ? 'Geen' : 'Alle'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {dayPhotos.map(p => {
+                            const allIds = dayPhotos.map(pp => pp.id)
+                            const isSelected = (selectedPhotoIds[date] ?? allIds).includes(p.id)
+                            return (
+                              <button key={p.id} onClick={() => togglePhotoSelection(date, p.id, allIds)} className="relative aspect-square rounded-xl overflow-hidden">
+                                <img src={`${p.baseUrl}=w200-h200-c`} alt={p.filename} className="w-full h-full object-cover transition-opacity" style={{ opacity: isSelected ? 1 : 0.35 }} />
+                                <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={isSelected ? { background: 'oklch(58% 0.10 148)' } : { background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)' }}>
+                                  {isSelected && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Plan text */}
                   <div className="mb-3">

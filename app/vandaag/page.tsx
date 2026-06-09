@@ -29,6 +29,21 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
+
+type PhotoPickerState = {
+  status: 'opening' | 'waiting'
+  sessionId?: string
+  message?: string
+}
+
+const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Kies in Google Photos de foto’s die bij vandaag horen. Na je keuze koppelen we ze aan dit dagboek-item.'
+
+const parsePhotoPickerDurationMs = (duration?: string) => {
+  const seconds = Number(duration?.replace('s', ''))
+  if (!Number.isFinite(seconds) || seconds <= 0) return 3000
+  return Math.min(Math.max(seconds * 1000, 1500), 10000)
+}
+
 type Phase = 'select' | 'edit' | 'plan'
 
 interface UserLocation { lat: number; lon: number }
@@ -1565,21 +1580,76 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
   const [photos, setPhotos] = useState<PhotoMeta[]>([])
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
+  const [photoPickerState, setPhotoPickerState] = useState<PhotoPickerState | null>(null)
+  const [photosAuthError, setPhotosAuthError] = useState(false)
 
-  useEffect(() => {
-    if (!session?.accessToken) return
+  const startPhotoPicker = async () => {
+    if (!session?.accessToken || photosAuthError) {
+      signIn('google', { callbackUrl: '/vandaag' }, { access_type: 'offline', prompt: 'consent' })
+      return
+    }
+
     setPhotosLoading(true)
-    fetch(`/api/photos?date=${date}`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setPhotos(data)
-          setSelectedPhotoIds(data.map((p: PhotoMeta) => p.id))
-        }
+    setPhotoPickerState({ status: 'opening' })
+    try {
+      const res = await fetch('/api/photos', { method: 'POST' })
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+        throw new Error('Google Photos Picker starten mislukt.')
+      }
+
+      const data = await res.json()
+      if (!data?.sessionId || !data?.pickerUri) throw new Error('Google Photos gaf geen kiesvenster terug.')
+
+      window.open(data.pickerUri, '_blank', 'noopener,noreferrer')
+      setPhotoPickerState({
+        status: 'waiting',
+        sessionId: data.sessionId,
+        message: 'Kies foto’s in het geopende Google Photos venster. We halen ze hier op zodra je klaar bent.',
       })
-      .catch(() => {})
-      .finally(() => setPhotosLoading(false))
-  }, [session?.accessToken, date])
+      pollPhotoPicker(data.sessionId, parsePhotoPickerDurationMs(data.pollingConfig?.pollInterval))
+    } catch (error) {
+      setPhotoPickerState({
+        status: 'waiting',
+        message: error instanceof Error ? error.message : 'Google Photos Picker starten mislukt.',
+      })
+    } finally {
+      setPhotosLoading(false)
+    }
+  }
+
+  const pollPhotoPicker = (sessionId: string, delayMs: number) => {
+    window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/photos?sessionId=${encodeURIComponent(sessionId)}`)
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) setPhotosAuthError(true)
+          throw new Error('Google Photos selectie ophalen mislukt.')
+        }
+
+        const data = await res.json()
+        if (!data.mediaItemsSet) {
+          setPhotoPickerState(prev => prev?.sessionId === sessionId ? {
+            ...prev,
+            message: 'Nog aan het wachten op je selectie in Google Photos…',
+          } : prev)
+          pollPhotoPicker(sessionId, parsePhotoPickerDurationMs(data.pollingConfig?.pollInterval))
+          return
+        }
+
+        const pickedPhotos: PhotoMeta[] = Array.isArray(data.mediaItems) ? data.mediaItems : []
+        setPhotos(pickedPhotos)
+        setSelectedPhotoIds(pickedPhotos.map(p => p.id))
+        setPhotosAuthError(false)
+        setPhotoPickerState(null)
+      } catch (error) {
+        setPhotoPickerState(prev => prev?.sessionId === sessionId ? {
+          ...prev,
+          message: error instanceof Error ? error.message : 'Google Photos selectie ophalen mislukt.',
+        } : prev)
+      }
+    }, delayMs)
+  }
 
   const togglePhoto = (id: string) => {
     setSelectedPhotoIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -1629,30 +1699,33 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
         </div>
 
         {/* Google Photos */}
-        <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Foto's van vandaag</p>
-        {!session?.accessToken ? (
-          <div className="rounded-2xl p-4 mb-5 flex items-center gap-3" style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}>
+        <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Foto&apos;s van vandaag</p>
+        <div className="rounded-2xl p-4 mb-5" style={{ background: 'oklch(94% 0.04 75)', border: '1px solid oklch(57% 0.14 40 / 0.25)' }}>
+          <div className="flex items-start gap-3">
             <span className="material-symbols-outlined text-xl" style={{ color: 'oklch(57% 0.14 40)', fontVariationSettings: "'FILL' 1" }}>photo_library</span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: '#2C2316' }}>Koppel Google Photos</p>
-              <p className="text-xs text-on-surface-variant">Verbind je account om foto's van vandaag te zien.</p>
+              <p className="text-sm font-semibold" style={{ color: '#2C2316' }}>{session?.accessToken ? 'Kies foto\'s in Google Photos' : 'Koppel Google Photos'}</p>
+              <p className="text-xs text-on-surface-variant mt-1">{GOOGLE_PHOTOS_PICKER_EXPLANATION}</p>
+              {photosAuthError && <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om foto&apos;s te kunnen kiezen.</p>}
+              {photoPickerState?.message && <p className="text-[11px] mt-2" style={{ color: '#6B5A3E' }}>{photoPickerState.message}</p>}
             </div>
-            <button
-              onClick={() => signIn('google', { callbackUrl: '/vandaag' }, { access_type: 'offline', prompt: 'consent' })}
-              className="text-xs font-semibold rounded-full px-3 py-1.5 flex-shrink-0"
-              style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
-            >
-              Verbinden
-            </button>
           </div>
-        ) : photosLoading ? (
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant mb-5 py-1">
-            <span className="material-symbols-outlined text-base animate-spin">refresh</span>
-            Foto's laden…
-          </div>
-        ) : photos.length === 0 ? (
-          <p className="text-xs text-on-surface-variant mb-5">Geen foto's gevonden voor vandaag.</p>
-        ) : (
+          <button
+            onClick={startPhotoPicker}
+            disabled={photosLoading || Boolean(photoPickerState?.sessionId)}
+            className="mt-3 text-xs font-semibold rounded-full px-3 py-1.5 flex-shrink-0 disabled:opacity-60 inline-flex items-center gap-2"
+            style={{ background: 'oklch(57% 0.14 40)', color: 'white' }}
+          >
+            {photosLoading || photoPickerState?.sessionId ? (
+              <>
+                <span className="material-symbols-outlined text-sm animate-spin">refresh</span>
+                Wachten op Google Photos…
+              </>
+            ) : photosAuthError ? 'Opnieuw verbinden' : session?.accessToken ? (photos.length > 0 ? "Andere foto\'s kiezen" : "Kies foto\'s") : 'Verbinden'}
+          </button>
+        </div>
+
+        {photos.length > 0 && (
           <div className="mb-5">
             <p className="text-xs text-on-surface-variant mb-2">{selectedPhotoIds.length}/{photos.length} geselecteerd</p>
             <div className="grid grid-cols-3 gap-1.5">
@@ -1696,7 +1769,7 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
         {/* AI story */}
         {story ? (
           <div className="rounded-2xl p-5 mb-4 relative overflow-hidden" style={{ background: 'linear-gradient(145deg, oklch(94% 0.04 75), oklch(96% 0.025 60))', border: '1px solid #E4D9C8' }}>
-            <div className="absolute top-3 right-5 text-6xl leading-none" style={{ fontFamily: 'var(--font-journal)', color: 'oklch(57% 0.14 40)', opacity: 0.1 }}>"</div>
+            <div className="absolute top-3 right-5 text-6xl leading-none" style={{ fontFamily: 'var(--font-journal)', color: 'oklch(57% 0.14 40)', opacity: 0.1 }}>&quot;</div>
             <div className="flex items-center gap-2 mb-3">
               <span className="material-symbols-outlined text-sm" style={{ color: 'oklch(79% 0.16 83)', fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#A8937A' }}>Dagboekverhaal</span>
