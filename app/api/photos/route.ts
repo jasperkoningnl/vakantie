@@ -52,13 +52,23 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({ filters, pageSize: 50 }),
   })
 
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
     return NextResponse.json(
       {
-        error: 'Google Photos toegang is verlopen of geweigerd. Verbind opnieuw met Google Photos.',
+        error: 'Google Photos toegang is verlopen. Verbind opnieuw met Google Photos.',
         code: 'GOOGLE_PHOTOS_RECONNECT_REQUIRED',
       },
       { status: 401 },
+    )
+  }
+
+  if (res.status === 403) {
+    return NextResponse.json(
+      {
+        error: 'Google Photos laat apps sinds 2025 niet meer automatisch je volledige fotobibliotheek per datum doorzoeken.',
+        code: 'GOOGLE_PHOTOS_LIBRARY_API_UNAVAILABLE',
+      },
+      { status: 403 },
     )
   }
 

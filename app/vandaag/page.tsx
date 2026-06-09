@@ -136,6 +136,7 @@ function formatTravelTime(mins: number): string {
 
 export default function VandaagPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [weatherError, setWeatherError] = useState(false)
   const [phase, setPhase] = useState<Phase>('select')
   const [mainDestinationId, setMainDestinationId] = useState<string | null>(null)
   const [basketIds, setBasketIds] = useState<string[]>([])
@@ -170,8 +171,16 @@ export default function VandaagPage() {
   const showVertreklijst = new Date() < new Date('2025-06-13')
 
   useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.398&longitude=1.119&current=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3')
-      .then(r => r.json()).then(setWeather).catch(() => {})
+    fetch('/api/weather')
+      .then(r => {
+        if (!r.ok) throw new Error('Weerbericht ophalen mislukt.')
+        return r.json()
+      })
+      .then(data => {
+        setWeather(data)
+        setWeatherError(false)
+      })
+      .catch(() => setWeatherError(true))
 
     const saved = localStorage.getItem('dagplan_basket')
     if (saved) setBasketIds(JSON.parse(saved))
@@ -358,7 +367,7 @@ export default function VandaagPage() {
         <div className="text-xs mt-0.5" style={{ color: '#A8937A' }}>{dateStr}</div>
       </div>
 
-      <WeatherCard weather={weather} />
+      <WeatherCard weather={weather} hasError={weatherError} />
 
       {showVertreklijst && (
         <a href="/vertreklijst" className="flex items-center gap-3 rounded-2xl p-4 mb-4 shadow-blue" style={{ background: 'oklch(92% 0.05 148)', border: '1px solid oklch(58% 0.10 148 / 0.3)', textDecoration: 'none' }}>
@@ -536,7 +545,7 @@ export default function VandaagPage() {
   )
 }
 
-function WeatherCard({ weather }: { weather: WeatherData | null }) {
+function WeatherCard({ weather, hasError }: { weather: WeatherData | null; hasError: boolean }) {
   const days = ['Vnd', 'Mor', 'Ovr']
   return (
     <div className="rounded-2xl p-4 mb-5" style={{ background: 'linear-gradient(135deg, oklch(76% 0.18 83), oklch(66% 0.17 58))' }}>
@@ -546,9 +555,14 @@ function WeatherCard({ weather }: { weather: WeatherData | null }) {
             {weather ? `${Math.round(weather.current.temperature_2m)}°` : '—°'}
           </div>
           <div className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
-            {weather ? wmoToDescription(weather.current.weathercode) : 'Laden…'}
+            {weather ? wmoToDescription(weather.current.weathercode) : hasError ? 'Tijdelijk niet beschikbaar' : 'Laden…'}
           </div>
           <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>Les Escaliers</div>
+          {hasError && !weather && (
+            <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.78)' }}>
+              Probeer het straks opnieuw.
+            </div>
+          )}
         </div>
         <div className="text-4xl">{weather ? wmoToEmoji(weather.current.weathercode) : '🌤️'}</div>
       </div>

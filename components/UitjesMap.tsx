@@ -2,6 +2,7 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Map as LeafletMap, Marker } from 'leaflet'
+import { addReliableTileLayer, invalidateMapSizeSoon } from '@/components/leafletTiles'
 import { Uitje } from '@/lib/uitjes'
 import { speeltuinen } from '@/lib/speeltuinen'
 
@@ -47,10 +48,8 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
       map = L.map(containerRef.current, { zoomControl: true }).setView([44.5, 1.2], 10)
       mapRef.current = map
 
-      L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenTopoMap contributors',
-        maxZoom: 17,
-      }).addTo(map)
+      addReliableTileLayer(L, map)
+      invalidateMapSizeSoon(map)
 
       // Distance rings around Les Escaliers
       RING_MINUTES.forEach(ring => {
