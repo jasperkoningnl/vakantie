@@ -32,7 +32,7 @@ type PickerState = {
   message?: string
 }
 
-const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Google laat apps niet meer automatisch je hele fotobibliotheek of gedeelde albums per datum doorzoeken. Kies daarom per dag de foto’s in Google Photos; daarna worden ze aan dit dagboek-item gekoppeld.'
+const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Kies in Google Photos de foto’s die bij deze dag horen. Na je keuze koppelen we ze aan dit dagboek-item.'
 
 const parseDurationMs = (duration?: string) => {
   const seconds = Number(duration?.replace('s', ''))
@@ -431,7 +431,7 @@ export default function DagboekPage() {
           <span className="material-symbols-outlined" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
           <div>
             <p className="text-sm font-semibold" style={{ color: 'oklch(35% 0.08 148)' }}>Google Photos gekoppeld</p>
-            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om foto&apos;s via de Google Photos Picker te kiezen.</p>
+            <p className="text-xs" style={{ color: 'oklch(45% 0.08 148)' }}>Klap een dag open om foto&apos;s in Google Photos te kiezen.</p>
           </div>
         </div>
       )}
@@ -567,7 +567,7 @@ export default function DagboekPage() {
                         <p className="text-xs font-semibold" style={{ color: '#2C2316' }}>Foto&apos;s koppelen aan deze dag</p>
                         <p className="text-[11px] text-on-surface-variant mt-1">{GOOGLE_PHOTOS_PICKER_EXPLANATION}</p>
                         {photosAuthError && (
-                          <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om de nieuwe Picker-toegang te geven.</p>
+                          <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om foto&apos;s te kunnen kiezen.</p>
                         )}
                         {pickerState?.day === date && pickerState.message && (
                           <p className="text-[11px] mt-2" style={{ color: '#6B5A3E' }}>{pickerState.message}</p>

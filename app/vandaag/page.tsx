@@ -36,7 +36,7 @@ type PhotoPickerState = {
   message?: string
 }
 
-const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Google laat apps niet meer automatisch je hele fotobibliotheek of gedeelde albums per datum doorzoeken. Kies daarom zelf de foto’s in Google Photos; daarna worden ze aan dit dagboek-item gekoppeld.'
+const GOOGLE_PHOTOS_PICKER_EXPLANATION = 'Kies in Google Photos de foto’s die bij vandaag horen. Na je keuze koppelen we ze aan dit dagboek-item.'
 
 const parsePhotoPickerDurationMs = (duration?: string) => {
   const seconds = Number(duration?.replace('s', ''))
@@ -1706,7 +1706,7 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold" style={{ color: '#2C2316' }}>{session?.accessToken ? 'Kies foto\'s in Google Photos' : 'Koppel Google Photos'}</p>
               <p className="text-xs text-on-surface-variant mt-1">{GOOGLE_PHOTOS_PICKER_EXPLANATION}</p>
-              {photosAuthError && <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om de nieuwe Picker-toegang te geven.</p>}
+              {photosAuthError && <p className="text-[11px] mt-2" style={{ color: 'oklch(50% 0.15 25)' }}>Verbind Google Photos opnieuw om foto&apos;s te kunnen kiezen.</p>}
               {photoPickerState?.message && <p className="text-[11px] mt-2" style={{ color: '#6B5A3E' }}>{photoPickerState.message}</p>}
             </div>
           </div>
