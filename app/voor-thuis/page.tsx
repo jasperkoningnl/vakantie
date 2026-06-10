@@ -1,7 +1,61 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { SafeArrival } from '@/lib/types'
+import { hasVoorthuisAccess } from '@/lib/voorthuis-auth'
 
 export const dynamic = 'force-dynamic'
+
+function VoorthuisLogin({ fout }: { fout: boolean }) {
+  return (
+    <div className="px-4 pt-6 pb-16 max-w-md mx-auto min-h-screen flex flex-col justify-center">
+      <div className="mb-6 text-center">
+        <div
+          className="text-xl font-semibold mb-0.5"
+          style={{ fontFamily: 'var(--font-hand)', color: 'oklch(57% 0.14 40)' }}
+        >
+          Notre Voyage
+        </div>
+        <h1
+          className="text-3xl font-medium leading-tight"
+          style={{ fontFamily: 'var(--font-journal)', fontStyle: 'italic', color: '#2C2316' }}
+        >
+          Voor de thuisblijvers
+        </h1>
+      </div>
+
+      <form
+        method="post"
+        action="/api/voor-thuis-login"
+        className="rounded-2xl p-5 shadow-blue"
+        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+      >
+        <p className="text-sm text-on-surface-variant mb-4">
+          Deze pagina is voor familie en vrienden. Vul het wachtwoord in dat je van ons hebt gekregen.
+        </p>
+        <input
+          type="password"
+          name="wachtwoord"
+          required
+          autoFocus
+          placeholder="Wachtwoord"
+          className="w-full rounded-xl p-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none mb-3"
+          style={{ background: 'white', border: '1px solid #E4D9C8' }}
+        />
+        {fout && (
+          <p className="text-sm mb-3" style={{ color: 'oklch(50% 0.15 25)' }}>
+            Dat wachtwoord klopt niet. Probeer het nog eens.
+          </p>
+        )}
+        <button
+          type="submit"
+          className="w-full rounded-2xl py-3 text-white font-semibold text-sm"
+          style={{ background: 'oklch(57% 0.14 40)' }}
+        >
+          Bekijk reisupdates
+        </button>
+      </form>
+    </div>
+  )
+}
 
 async function getLatestArrival(): Promise<SafeArrival | null> {
   try {
@@ -34,7 +88,16 @@ const STEP_COLORS = [
   'oklch(57% 0.14 40)',
 ]
 
-export default async function VoorThuisPage() {
+export default async function VoorThuisPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  if (!(await hasVoorthuisAccess())) {
+    const { fout } = await searchParams
+    return <VoorthuisLogin fout={fout === '1'} />
+  }
+
   const arrival = await getLatestArrival()
 
   const formatTs = (ts: string) => {

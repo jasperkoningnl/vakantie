@@ -37,7 +37,8 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Privacy en delen
 
-- `/medisch` en `/voor-thuis` zijn privépagina's en vereisen dezelfde NextAuth-login als de privé API-routes.
+- `/medisch` is een privépagina en vereist dezelfde NextAuth-login als de privé API-routes. De persoonlijke medische gegevens staan niet in de codebase maar in de privé Supabase Storage-bucket `private-content` (invullen/bewerken via `/medisch?bewerk=1`).
+- `/voor-thuis` is afgeschermd met een gedeeld wachtwoord voor familie en vrienden (standaard in te stellen via de env-variabele `VOORTHUIS_PASSWORD`). Wijzig je het wachtwoord, dan vervallen alle eerder uitgedeelde toegangscookies vanzelf.
 - Deel een eventuele geheime of moeilijk te raden URL nooit publiek, niet in openbare chats en niet op sociale media. Een geheime URL is geen vervanging voor inloggen.
 - Gebruik `/nood` als openbare noodmodus: die pagina bevat alleen minimale Franse noodnummers en geen medische context of persoonsgegevens.
 - De service worker cachet geen privépagina's of API-antwoorden, zodat medische gegevens en thuisblijversupdates niet onbedoeld offline in een publieke browsercache blijven staan.
