@@ -1,10 +1,12 @@
 'use client'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
-import type { Map as LeafletMap, Marker } from 'leaflet'
+import type { Map as LeafletMap, LayerGroup } from 'leaflet'
 import { addReliableTileLayer, invalidateMapSizeSoon } from '@/components/leafletTiles'
 import { Uitje } from '@/lib/uitjes'
 import { speeltuinen } from '@/lib/speeltuinen'
+
+type LeafletModule = typeof import('leaflet')
 
 const CATEGORY_COLORS: Record<string, string> = {
   entertainment: '#FF6B6B',
@@ -28,25 +30,49 @@ interface Props {
   uitjes: Uitje[]
   selected: string | null
   onSelect: (id: string) => void
-  basketIds: string[]
-  onBasket: (id: string) => void
 }
 
-export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBasket }: Props) {
+export default function UitjesMap({ uitjes, selected, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
-  const markersRef = useRef<Record<string, Marker>>({})
+  const leafletRef = useRef<LeafletModule | null>(null)
+  const markersLayerRef = useRef<LayerGroup | null>(null)
+  const onSelectRef = useRef(onSelect)
+  const uitjesRef = useRef(uitjes)
+
+  useEffect(() => {
+    onSelectRef.current = onSelect
+    uitjesRef.current = uitjes
+  })
+
+  const drawUitjesMarkers = (L: LeafletModule, map: LeafletMap, items: Uitje[]) => {
+    markersLayerRef.current?.remove()
+    const group = L.layerGroup().addTo(map)
+
+    items.forEach(u => {
+      const color = CATEGORY_COLORS[u.type] || '#FF6B6B'
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;"></div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      })
+      const marker = L.marker(u.coords, { icon }).addTo(group)
+      marker.on('click', () => onSelectRef.current(u.id))
+    })
+
+    markersLayerRef.current = group
+  }
 
   useEffect(() => {
     if (!containerRef.current) return
 
-    let map: LeafletMap
-
     import('leaflet').then(L => {
       if (!containerRef.current || mapRef.current) return
 
-      map = L.map(containerRef.current, { zoomControl: true }).setView([44.5, 1.2], 10)
+      const map = L.map(containerRef.current, { zoomControl: true }).setView([44.5, 1.2], 10)
       mapRef.current = map
+      leafletRef.current = L
 
       addReliableTileLayer(L, map)
       invalidateMapSizeSoon(map)
@@ -84,19 +110,7 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
           </div>
         `)
 
-      // Activity markers
-      uitjes.forEach(u => {
-        const color = CATEGORY_COLORS[u.type] || '#FF6B6B'
-        const icon = L.divIcon({
-          className: '',
-          html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;"></div>`,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
-        })
-        const marker = L.marker(u.coords, { icon }).addTo(map)
-        marker.on('click', () => onSelect(u.id))
-        markersRef.current[u.id] = marker
-      })
+      drawUitjesMarkers(L, map, uitjesRef.current)
 
       // Speeltuin markers — small green pins, map-only
       speeltuinen.forEach(s => {
@@ -119,18 +133,21 @@ export default function UitjesMap({ uitjes, selected, onSelect, basketIds, onBas
       })
     })
 
-    const handleBasketAdd = (e: Event) => {
-      onBasket((e as CustomEvent).detail)
-    }
-    document.addEventListener('basket-add', handleBasketAdd)
-
     return () => {
-      document.removeEventListener('basket-add', handleBasketAdd)
       mapRef.current?.remove()
       mapRef.current = null
-      markersRef.current = {}
+      leafletRef.current = null
+      markersLayerRef.current = null
     }
   }, [])
+
+  // Herteken de uitjes-markers wanneer het filter de lijst wijzigt.
+  useEffect(() => {
+    const L = leafletRef.current
+    const map = mapRef.current
+    if (!L || !map) return
+    drawUitjesMarkers(L, map, uitjes)
+  }, [uitjes])
 
   useEffect(() => {
     if (!mapRef.current || !selected) return

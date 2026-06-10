@@ -227,8 +227,6 @@ export default function UitjesPage() {
               const u = filtered.find(x => x.id === id)
               if (u) setDetailUitje(u)
             }}
-            basketIds={basketIds}
-            onBasket={toggleBasket}
           />
         </div>
       )}
