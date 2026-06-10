@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { requirePrivateAccess } from '@/lib/api-auth'
+import { supabaseAdmin } from '@/lib/supabase'
+
+// Foto's downloaden + uploaden kan even duren bij een grote selectie.
+export const maxDuration = 60
 
 const PICKER_API_BASE_URL = 'https://photospicker.googleapis.com/v1'
 const MAX_PICKED_PHOTOS = 50
+
+// Picker-baseUrls vereisen een OAuth-header en verlopen na 60 minuten;
+// daarom slaan we de bytes direct op in Supabase Storage en bewaart het
+// dagboek alleen nog onze eigen, permanente publieke URL.
+const PHOTO_BUCKET = 'diary-photos'
+const PHOTO_DOWNLOAD_SIZE = '=w1600-h1600'
+const UPLOAD_CONCURRENCY = 4
 
 type GooglePickerError = {
   error?: {
@@ -120,6 +131,48 @@ async function fetchPickedPhotos(accessToken: string, sessionId: string) {
   return { mediaItems: mediaItems.slice(0, MAX_PICKED_PHOTOS) }
 }
 
+type MappedPhoto = ReturnType<typeof mapPickedMediaItem>
+
+async function storePickedPhoto(
+  db: ReturnType<typeof supabaseAdmin>,
+  accessToken: string,
+  item: MappedPhoto,
+): Promise<MappedPhoto | null> {
+  try {
+    const res = await fetch(`${item.baseUrl}${PHOTO_DOWNLOAD_SIZE}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+
+    const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+    const extension = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg'
+    const path = `picker/${item.id.replace(/[^A-Za-z0-9_-]/g, '_')}.${extension}`
+    const bytes = await res.arrayBuffer()
+
+    const { error } = await db.storage.from(PHOTO_BUCKET).upload(path, bytes, { contentType, upsert: true })
+    if (error) return null
+
+    return { ...item, baseUrl: db.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl }
+  } catch {
+    return null
+  }
+}
+
+async function storePickedPhotos(accessToken: string, items: MappedPhoto[]): Promise<MappedPhoto[]> {
+  const db = supabaseAdmin()
+  // Bestaat de bucket al, dan negeren we de foutmelding in het resultaat.
+  await db.storage.createBucket(PHOTO_BUCKET, { public: true })
+
+  const stored: MappedPhoto[] = []
+  for (let i = 0; i < items.length; i += UPLOAD_CONCURRENCY) {
+    const batch = await Promise.all(
+      items.slice(i, i + UPLOAD_CONCURRENCY).map(item => storePickedPhoto(db, accessToken, item)),
+    )
+    stored.push(...batch.filter((photo): photo is MappedPhoto => photo !== null))
+  }
+  return stored
+}
+
 export async function POST() {
   const unauthorized = await requirePrivateAccess()
   if (unauthorized) return unauthorized
@@ -185,6 +238,17 @@ export async function GET(req: NextRequest) {
   const picked = await fetchPickedPhotos(accessToken, sessionId)
   if (picked.response) return picked.response
 
+  const storedPhotos = await storePickedPhotos(accessToken, picked.mediaItems ?? [])
+  if ((picked.mediaItems?.length ?? 0) > 0 && storedPhotos.length === 0) {
+    return NextResponse.json(
+      {
+        error: 'Foto’s konden niet in de app worden opgeslagen. Probeer het opnieuw.',
+        code: 'GOOGLE_PHOTOS_STORE_FAILED',
+      },
+      { status: 502 },
+    )
+  }
+
   fetch(`${PICKER_API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -192,6 +256,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     mediaItemsSet: true,
-    mediaItems: picked.mediaItems,
+    mediaItems: storedPhotos,
   })
 }

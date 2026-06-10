@@ -1746,7 +1746,7 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
                 const isSelected = selectedPhotoIds.includes(p.id)
                 return (
                   <button key={p.id} onClick={() => togglePhoto(p.id)} className="relative aspect-square rounded-xl overflow-hidden">
-                    <img src={`${p.baseUrl}=w200-h200-c`} alt={p.filename} className="w-full h-full object-cover" style={{ opacity: isSelected ? 1 : 0.35 }} />
+                    <img src={p.baseUrl} alt={p.filename} className="w-full h-full object-cover" style={{ opacity: isSelected ? 1 : 0.35 }} />
                     {isSelected && (
                       <div className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'oklch(57% 0.14 40)' }}>
                         <span className="material-symbols-outlined text-white" style={{ fontSize: '12px' }}>check</span>
