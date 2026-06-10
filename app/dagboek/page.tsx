@@ -156,6 +156,15 @@ export default function DagboekPage() {
         const loadedSaveStates = Object.fromEntries(
           data.map(e => [e.date, { status: 'saved' as const, revision: 0 }])
         )
+        const savedPhotos: Record<string, PhotoMeta[]> = {}
+        data.forEach(e => {
+          if (!Array.isArray(e.photos)) return
+          // Eerder opgeslagen Google-baseUrls zijn verlopen en tonen kapotte
+          // plaatjes; alleen foto's uit onze eigen Supabase Storage tonen.
+          const stored = e.photos.filter(p => typeof p.baseUrl === 'string' && p.baseUrl.includes('/storage/v1/object/public/'))
+          if (stored.length > 0) savedPhotos[e.date] = stored
+        })
+        setPhotos(savedPhotos)
         setEntries(map)
         saveRevisionsRef.current = Object.fromEntries(data.map(e => [e.date, 0]))
         setSaveStates(loadedSaveStates)
@@ -624,7 +633,7 @@ export default function DagboekPage() {
                             const isSelected = (selectedPhotoIds[date] ?? allIds).includes(p.id)
                             return (
                               <button key={p.id} onClick={() => togglePhotoSelection(date, p.id, allIds)} className="relative aspect-square rounded-xl overflow-hidden">
-                                <img src={`${p.baseUrl}=w200-h200-c`} alt={p.filename} className="w-full h-full object-cover transition-opacity" style={{ opacity: isSelected ? 1 : 0.35 }} />
+                                <img src={p.baseUrl} alt={p.filename} className="w-full h-full object-cover transition-opacity" style={{ opacity: isSelected ? 1 : 0.35 }} />
                                 <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={isSelected ? { background: 'oklch(58% 0.10 148)' } : { background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)' }}>
                                   {isSelected && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5L4.5 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                                 </div>
