@@ -84,22 +84,20 @@ self.addEventListener('fetch', (event) => {
   // Skip non-http(s) requests (chrome-extension://, etc.)
   if (!url.protocol.startsWith('http')) return;
 
+  // Externe hostnames (kaart-tiles, externe API's): niet onderscheppen.
+  // Native browser-requests behouden hun Referer-header; OSM blokkeert
+  // tile-requests zonder Referer en Safari laat die header vallen bij
+  // requests die een service worker opnieuw uitvoert.
+  if (url.origin !== self.location.origin) return;
+
   if (request.method !== 'GET') {
     event.respondWith(networkOnly(request));
     return;
   }
 
-  const isExternal = url.origin !== self.location.origin;
-
   // 1. Next.js immutable static assets – cache-first.
   if (isImmutableNextAsset(url)) {
     event.respondWith(cacheFirst(request, CACHE_STATIC));
-    return;
-  }
-
-  // 2. External hostnames – network-only; do not cache third-party API data/assets.
-  if (isExternal) {
-    event.respondWith(networkOnly(request));
     return;
   }
 
