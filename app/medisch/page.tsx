@@ -1,12 +1,22 @@
 import { PrintButton } from '@/components/PrintButton'
 import { SpeechButton } from '@/components/SpeechButton'
+import MedischContentForm from '@/components/MedischContentForm'
 import { requirePrivatePageAccess } from '@/lib/private-page-auth'
-import { emergencyNumbers, hospitals, medicalLetter, phrases, urgencyText } from '@/lib/private-medical'
+import { getMedischContent } from '@/lib/medisch-content'
+import { emergencyNumbers, phrases } from '@/lib/medisch-static'
 
 export const dynamic = 'force-dynamic'
 
-export default async function MedischPage() {
+export default async function MedischPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
   await requirePrivatePageAccess('/medisch')
+
+  const content = await getMedischContent()
+  const { bewerk } = await searchParams
+  const showForm = !content || bewerk === '1'
 
   return (
     <div className="px-4 pt-5">
@@ -54,57 +64,68 @@ export default async function MedischPage() {
         </a>
       </section>
 
-      <div className="flex flex-col gap-3 mb-5">
-        {hospitals.map(hospital => (
-          <div
-            key={hospital.name}
-            className="rounded-2xl p-4 shadow-blue"
+      {showForm && (
+        <MedischContentForm initialJson={content ? JSON.stringify(content, null, 2) : undefined} />
+      )}
+
+      {content && !showForm && (
+        <>
+          <div className="flex flex-col gap-3 mb-5">
+            {content.hospitals.map(hospital => (
+              <div
+                key={hospital.name}
+                className="rounded-2xl p-4 shadow-blue"
+                style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>local_hospital</span>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-on-surface text-sm">{hospital.name}</h3>
+                    <p className="text-xs text-on-surface-variant">{hospital.specialty}</p>
+                    <p className="text-xs text-on-surface-variant">{hospital.address}</p>
+                    {hospital.distance && <p className="text-xs text-on-surface-variant">{hospital.distance}</p>}
+                    <a href={hospital.href} className="text-sm font-bold mt-1 block" style={{ color: 'oklch(57% 0.14 40)' }}>
+                      {hospital.phone}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <section
+            className="rounded-2xl p-4 mb-6 shadow-blue"
             style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
           >
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-2xl" style={{ color: 'oklch(65% 0.10 218)', fontVariationSettings: "'FILL' 1" }}>local_hospital</span>
-              <div className="flex-1">
-                <h3 className="font-semibold text-on-surface text-sm">{hospital.name}</h3>
-                <p className="text-xs text-on-surface-variant">{hospital.specialty}</p>
-                <p className="text-xs text-on-surface-variant">{hospital.address}</p>
-                {hospital.distance && <p className="text-xs text-on-surface-variant">{hospital.distance}</p>}
-                <a href={hospital.href} className="text-sm font-bold mt-1 block" style={{ color: 'oklch(57% 0.14 40)' }}>
-                  {hospital.phone}
-                </a>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-on-surface">Medische brief</h2>
+              <div className="flex gap-2">
+                <SpeechButton
+                  text={content.urgencyText}
+                  label="FR"
+                  className="rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1"
+                  style={{
+                    background: 'oklch(92% 0.05 218)',
+                    border: '1px solid oklch(65% 0.10 218 / 0.3)',
+                    color: 'oklch(65% 0.10 218)',
+                  }}
+                />
+                <PrintButton />
               </div>
             </div>
-          </div>
-        ))}
-      </div>
 
-      <section
-        className="rounded-2xl p-4 mb-6 shadow-blue"
-        style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-on-surface">Medische brief</h2>
-          <div className="flex gap-2">
-            <SpeechButton
-              text={urgencyText}
-              label="FR"
-              className="rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1"
-              style={{
-                background: 'oklch(92% 0.05 218)',
-                border: '1px solid oklch(65% 0.10 218 / 0.3)',
-                color: 'oklch(65% 0.10 218)',
-              }}
-            />
-            <PrintButton />
-          </div>
-        </div>
-
-        <pre
-          className="text-xs text-on-surface leading-relaxed whitespace-pre-wrap font-sans rounded-xl p-3 overflow-x-auto"
-          style={{ background: 'white', border: '1px solid #E4D9C8' }}
-        >
-          {medicalLetter}
-        </pre>
-      </section>
+            <pre
+              className="text-xs text-on-surface leading-relaxed whitespace-pre-wrap font-sans rounded-xl p-3 overflow-x-auto"
+              style={{ background: 'white', border: '1px solid #E4D9C8' }}
+            >
+              {content.medicalLetter}
+            </pre>
+            <a href="/medisch?bewerk=1" className="text-xs font-semibold mt-3 inline-block no-print" style={{ color: '#A8937A' }}>
+              Medische gegevens bewerken
+            </a>
+          </section>
+        </>
+      )}
 
       <section className="mb-8">
         <h2 className="font-semibold text-on-surface mb-2">Franse zinnen</h2>
