@@ -6,7 +6,7 @@ import { useSession, signIn } from 'next-auth/react'
 const DagRouteMap = dynamic(() => import('@/components/DagRouteMap'), { ssr: false })
 import { WeatherData, wmoToDescription, wmoToEmoji, DayPlan, DayPlanStop, PhotoMeta } from '@/lib/types'
 import { uitjes, Uitje, getTodayMarktdagen, getUitjeById } from '@/lib/uitjes'
-import { reiskalender, Reisdag, VerblijfDay, KalenderEntry } from '@/lib/reiskalender'
+import { reiskalender, Reisdag, VerblijfDay, KalenderEntry, TRIP_START_DATE } from '@/lib/reiskalender'
 import { getSupabase } from '@/lib/supabase'
 import { getParisDateString, isAfterParisHour } from '@/lib/date-utils'
 
@@ -197,7 +197,7 @@ export default function VandaagPage() {
   const activeEntry = todayEntry
   const isReisdag = activeEntry?.type === 'reisdag'
   const after17 = isAfter17Paris()
-  const showVertreklijst = new Date() < new Date('2025-06-13')
+  const showVertreklijst = today <= TRIP_START_DATE
 
   useEffect(() => {
     fetch('/api/weather')
@@ -1244,7 +1244,6 @@ function EditPlanView({
           style={{ height: 220, border: '1px solid #E4D9C8', isolation: 'isolate' }}
         >
           <DagRouteMap
-            key={plan.stops.map(s => s.name).join(',')}
             stops={plan.stops.map(s => ({
               name: s.name,
               coords: s.coords,

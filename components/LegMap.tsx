@@ -25,7 +25,6 @@ export default function LegMap({ route, markers, color = '#4D96FF', dashed = fal
       mapRef.current = map
 
       addReliableTileLayer(L, map)
-      invalidateMapSizeSoon(map)
 
       const polyline = L.polyline(route, {
         color,
@@ -43,7 +42,11 @@ export default function LegMap({ route, markers, color = '#4D96FF', dashed = fal
         L.marker(m.coords, { icon }).addTo(map)
       })
 
-      map.fitBounds(polyline.getBounds(), { padding: [20, 20] })
+      const fitToRoute = () => map.fitBounds(polyline.getBounds(), { padding: [20, 20] })
+      fitToRoute()
+      // Opnieuw fitten zodra de container zijn definitieve maat heeft,
+      // anders rekent Leaflet de zoom uit op een nog niet uitgelijnde container.
+      invalidateMapSizeSoon(map, fitToRoute)
     })
 
     return () => {

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { DiaryEntry, PhotoMeta } from '@/lib/types'
+import { tripDates } from '@/lib/reiskalender'
 
 const MOODS = [
   { emoji: '😴', label: 'Moe' },
@@ -11,11 +12,7 @@ const MOODS = [
   { emoji: '🤩', label: 'Episch' },
 ]
 
-const VACATION_DAYS: string[] = Array.from({ length: 15 }, (_, i) => {
-  const d = new Date('2025-06-13')
-  d.setDate(d.getDate() + i)
-  return d.toISOString().split('T')[0]
-})
+const VACATION_DAYS: string[] = tripDates
 
 type SaveStatus = 'unsaved' | 'saving' | 'saved' | 'failed'
 
