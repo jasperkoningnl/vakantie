@@ -13,9 +13,9 @@ import { getParisDateString, isAfterParisHour } from '@/lib/date-utils'
 const HOME_COORDS: [number, number] = [44.398, 1.119]
 
 const CATEGORIES = [
-  { label: 'Vermaak',      icon: 'child_care',    value: 'lena',     color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => !!u.lena },
+  { label: 'Vermaak',      icon: 'child_care',    value: 'lena',     color: 'oklch(79% 0.16 83)',  bg: 'oklch(92% 0.07 83)',  uitjeFilter: (u: Uitje) => u.type === 'entertainment' },
   { label: 'Cultuur',      icon: 'castle',        value: 'culture',  color: 'oklch(57% 0.14 40)',  bg: 'oklch(93% 0.05 40)',  uitjeFilter: (u: Uitje) => u.type === 'culture' },
-  { label: 'Natuur',       icon: 'forest',        value: 'nature',   color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)', uitjeFilter: (u: Uitje) => u.type === 'entertainment' || u.type === 'nature' },
+  { label: 'Natuur',       icon: 'forest',        value: 'nature',   color: 'oklch(58% 0.10 148)', bg: 'oklch(92% 0.05 148)', uitjeFilter: (u: Uitje) => u.type === 'nature' },
   { label: 'Eten',         icon: 'restaurant',   value: 'food',     color: 'oklch(65% 0.09 298)', bg: 'oklch(92% 0.05 298)', uitjeFilter: (u: Uitje) => u.type === 'food' },
   { label: 'Boodschappen', icon: 'shopping_cart', value: 'shop',     color: 'oklch(65% 0.10 218)', bg: 'oklch(92% 0.05 218)', uitjeFilter: (u: Uitje) => u.type === 'shop' },
   { label: 'Bakkers',      icon: 'bakery_dining', value: 'surprise', color: 'oklch(68% 0.11 10)',  bg: 'oklch(93% 0.05 10)',  uitjeFilter: (u: Uitje) => u.type === 'bakery' },
@@ -841,6 +841,11 @@ function UitjeSelectCard({
             🌿 Vegetarisch
           </span>
         )}
+        {uitje.lena && (
+          <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.07 60)', color: 'oklch(45% 0.14 60)' }}>
+            🧸 Leuk voor Lena
+          </span>
+        )}
         {isMarktVandaag && (
           <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: 'oklch(79% 0.16 83)', color: 'white' }}>
             🛒 Markt vandaag!
@@ -962,6 +967,8 @@ function SelectPhase({
   const rawCatUitjes = [...uitjes, ...getTodayMarktdagen()]
     .filter(activeCat.uitjeFilter)
     .filter(u => haversineKm(u.coords, baseCoords) <= 150)
+    // Standaard dichtstbijzijnde eerst (bij gekozen bestemming sorteert catUitjes op de route).
+    .sort((a, b) => haversineKm(a.coords, baseCoords) - haversineKm(b.coords, baseCoords))
 
   // When destination is set: on-route items first (ascending proj), off-route last
   const catUitjes = mainDestinationId
@@ -1537,6 +1544,7 @@ function UitjeInfoModal({ uitjeId, onClose }: { uitjeId: string; onClose: () => 
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>🚗 {uitje.drive} vanuit Les Escaliers</span>
                 {uitje.vegetarian && <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.05 148)', color: 'oklch(40% 0.10 148)' }}>🌿 Vegetarisch</span>}
+                {uitje.lena && <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: 'oklch(92% 0.07 60)', color: 'oklch(45% 0.14 60)' }}>🧸 Leuk voor Lena</span>}
               </div>
             </div>
             <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#F0E9DA', color: '#6B5A3E' }}>
