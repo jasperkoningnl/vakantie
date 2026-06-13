@@ -68,3 +68,25 @@ export function getTodayEntry(): KalenderEntry | null {
   const today = getParisDateString()
   return reiskalender[today] ?? null
 }
+
+/** Coördinaten van de thuisbasis (Les Escaliers / Quercy). */
+export const HOME_COORDS: [number, number] = [44.398, 1.119]
+
+/** Verblijfplaats van vandaag; valt terug op de thuisbasis op reisdagen. */
+export function getTodayBaseCoords(): [number, number] {
+  const entry = getTodayEntry()
+  if (entry && (entry.type === 'vakantie' || entry.type === 'verblijf')) return entry.coords
+  return HOME_COORDS
+}
+
+/** Datum (YYYY-MM-DD) waarop de Chartres-etappe van de terugreis begint. */
+const chartresStartDate = tripDates.find(date => {
+  const entry = reiskalender[date]
+  return entry.type === 'reisdag' && entry.naar.includes('Chartres')
+})
+
+/** True zodra de reis bij de Chartres-etappe is (27 juni e.v.); daarvóór niet relevant. */
+export function isChartresPhase(): boolean {
+  if (!chartresStartDate) return false
+  return getParisDateString() >= chartresStartDate
+}
