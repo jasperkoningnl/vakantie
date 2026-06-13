@@ -2,10 +2,9 @@
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
+import { HOME_COORDS, getTodayBaseCoords, isChartresPhase } from '@/lib/reiskalender'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
-
-const HOME_COORDS: [number, number] = [44.398, 1.119]
 
 function haversineKm(a: [number, number], b: [number, number]): number {
   const R = 6371
@@ -15,7 +14,7 @@ function haversineKm(a: [number, number], b: [number, number]): number {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
 
-type FilterValue = UitjeType | 'all' | 'lena' | 'nature' | 'nearby'
+type FilterValue = UitjeType | 'all'
 
 interface Filter {
   label: string
@@ -23,16 +22,15 @@ interface Filter {
   icon: string
 }
 
+// Eén kaart hoort bij precies één filter (geen overlap meer tussen Natuur/Vermaak of Bakkers/Boodschappen).
 const FILTERS: Filter[] = [
-  { label: 'Vermaak',      value: 'lena',    icon: 'child_care' },
-  { label: 'Cultuur',      value: 'culture', icon: 'museum' },
-  { label: 'Natuur',       value: 'nature',  icon: 'forest' },
-  { label: 'Eten',         value: 'food',    icon: 'restaurant' },
-  { label: 'Bakkers',      value: 'bakery',  icon: 'bakery_dining' },
-  { label: 'Boodschappen', value: 'shop',    icon: 'shopping_cart' },
+  { label: 'Vermaak',      value: 'entertainment', icon: 'child_care' },
+  { label: 'Cultuur',      value: 'culture',       icon: 'museum' },
+  { label: 'Natuur',       value: 'nature',        icon: 'forest' },
+  { label: 'Eten',         value: 'food',          icon: 'restaurant' },
+  { label: 'Bakkers',      value: 'bakery',        icon: 'bakery_dining' },
+  { label: 'Boodschappen', value: 'shop',          icon: 'shopping_cart' },
 ]
-
-const LENA_IDS = ['u1', 'u2', 'u6', 'u14', 'u19', 'u22', 'u23', 'u29', 'u30', 'u31', 'u32']
 
 const TYPE_ICONS: Record<string, string> = {
   entertainment: 'attractions',
@@ -54,8 +52,6 @@ const TYPE_COLORS: Record<string, string> = {
 
 const FILTER_COLORS: Record<string, string> = {
   all:           'oklch(57% 0.14 40)',
-  nearby:        'oklch(60% 0.11 185)',
-  lena:          'oklch(79% 0.16 83)',
   culture:       'oklch(57% 0.14 40)',
   entertainment: 'oklch(79% 0.16 83)',
   nature:        'oklch(58% 0.10 148)',
@@ -71,8 +67,15 @@ export default function UitjesPage() {
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [visitedNames, setVisitedNames] = useState<string[]>([])
   const [detailUitje, setDetailUitje] = useState<Uitje | null>(null)
-  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null)
-  const [locationDenied, setLocationDenied] = useState(false)
+  // Verblijfplaats van vandaag (op de Chartres-dagen verschuift dit mee).
+  const [homeBase, setHomeBase] = useState<[number, number]>(HOME_COORDS)
+  // Chartres-uitjes blijven verborgen tot de terugreis-etappe (27/28 juni).
+  const [showChartres, setShowChartres] = useState(false)
+
+  useEffect(() => {
+    setHomeBase(getTodayBaseCoords())
+    setShowChartres(isChartresPhase())
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('dagplan_basket')
@@ -99,16 +102,6 @@ export default function UitjesPage() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (filter !== 'nearby' || userLocation || locationDenied) return
-    if (!('geolocation' in navigator)) { setLocationDenied(true); return }
-    navigator.geolocation.getCurrentPosition(
-      pos => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => setLocationDenied(true),
-      { enableHighAccuracy: false, timeout: 10000 }
-    )
-  }, [filter, userLocation, locationDenied])
-
   // Lock body scroll when detail sheet is open
   useEffect(() => {
     if (detailUitje) {
@@ -119,21 +112,15 @@ export default function UitjesPage() {
     return () => { document.body.style.overflow = '' }
   }, [detailUitje])
 
-  const locationBase: [number, number] = userLocation
-    ? [userLocation.lat, userLocation.lon]
-    : HOME_COORDS
-
-  const filtered = uitjes.filter(u => {
-    if (filter === 'all' || filter === 'nearby') return true
-    if (filter === 'lena') return !!u.lena
-    if (filter === 'nature') return u.type === 'nature' || u.type === 'entertainment'
-    if (filter === 'food') return u.type === 'food'
-    if (filter === 'shop') return u.type === 'shop' || u.type === 'bakery'
-    return u.type === filter
-  }).sort((a, b) => {
-    if (filter !== 'nearby') return 0
-    return haversineKm(locationBase, a.coords) - haversineKm(locationBase, b.coords)
-  })
+  const filtered = uitjes
+    .filter(u => {
+      // Chartres pas tonen tijdens de terugreis-etappe (27/28 juni).
+      if (u.region === 'chartres' && !showChartres) return false
+      if (filter === 'all') return true
+      return u.type === filter
+    })
+    // Standaard sorteren op afstand tot de verblijfplaats, dichtstbijzijnde eerst.
+    .sort((a, b) => haversineKm(homeBase, a.coords) - haversineKm(homeBase, b.coords))
 
   const isVisited = (u: Uitje) => visitedNames.some(n => n.includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(n))
 
@@ -144,8 +131,6 @@ export default function UitjesPage() {
       return next
     })
   }
-
-  const activeColor = FILTER_COLORS[filter]
 
   return (
     <div className="px-4 pt-5">
@@ -332,14 +317,24 @@ export default function UitjesPage() {
                 {detailUitje.desc}
               </p>
 
-              {detailUitje.vegetarian && (
-                <span
-                  className="inline-flex items-center gap-1 text-xs font-medium mt-2"
-                  style={{ color: 'oklch(58% 0.10 148)' }}
-                >
-                  🌿 Vegetarisch
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                {detailUitje.vegetarian && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-medium"
+                    style={{ color: 'oklch(58% 0.10 148)' }}
+                  >
+                    🌿 Vegetarisch
+                  </span>
+                )}
+                {detailUitje.lena && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-medium"
+                    style={{ color: 'oklch(72% 0.15 60)' }}
+                  >
+                    🧸 Leuk voor Lena
+                  </span>
+                )}
+              </div>
 
               {/* Links */}
               <div className="flex flex-wrap gap-2 mt-4">
@@ -475,11 +470,18 @@ function UitjeCard({
             </div>
           </div>
           <p className="text-sm text-on-surface-variant mt-1 line-clamp-2">{uitje.desc}</p>
-          {uitje.vegetarian && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium mt-1" style={{ color: 'oklch(58% 0.10 148)' }}>
-              🌿 Vegetarisch
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+            {uitje.vegetarian && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'oklch(58% 0.10 148)' }}>
+                🌿 Vegetarisch
+              </span>
+            )}
+            {uitje.lena && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'oklch(72% 0.15 60)' }}>
+                🧸 Leuk voor Lena
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
