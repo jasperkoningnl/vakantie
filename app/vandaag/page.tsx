@@ -216,6 +216,24 @@ export default function VandaagPage() {
     const savedDest = localStorage.getItem('dagplan_destination')
     if (savedDest) setMainDestinationId(savedDest)
 
+    // Herstel een eerder bevestigd dagplan meteen, zodat het vast blijft staan
+    // op vandaag zonder eerst de wizard te tonen. Plannen van een vorige dag
+    // gooien we weg.
+    const savedPlan = localStorage.getItem('dagplan_confirmed')
+    if (savedPlan) {
+      try {
+        const { date, plan } = JSON.parse(savedPlan)
+        if (date === today && plan?.stops) {
+          setDayPlan(plan)
+          setPhase('plan')
+        } else if (date !== today) {
+          localStorage.removeItem('dagplan_confirmed')
+        }
+      } catch {
+        localStorage.removeItem('dagplan_confirmed')
+      }
+    }
+
     fetch('/api/diary')
       .then(r => r.json())
       .then((data: Array<{ date: string; plan_text?: string; actual_text?: string; mood_emoji?: string }>) => {
@@ -224,7 +242,11 @@ export default function VandaagPage() {
           try {
             const plan = typeof todayDiary.plan_text === 'string' && todayDiary.plan_text.startsWith('{')
               ? JSON.parse(todayDiary.plan_text) : null
-            if (plan?.stops) { setDayPlan(plan); setPhase('plan') }
+            if (plan?.stops) {
+              setDayPlan(plan)
+              setPhase('plan')
+              localStorage.setItem('dagplan_confirmed', JSON.stringify({ date: today, plan }))
+            }
           } catch { /* geen plan */ }
         }
         if (todayDiary?.actual_text || todayDiary?.mood_emoji) setSluitDone(true)
@@ -294,14 +316,20 @@ export default function VandaagPage() {
   }
 
   const handleConfirmPlan = async (plan: DayPlan) => {
+    // Leg het bevestigde plan meteen lokaal vast zodat het op vandaag blijft
+    // vaststaan bij terugkeer op de pagina — ook als de server-opslag traag is
+    // of faalt. Het blijft staan tot je het actief aanpast of opnieuw begint.
+    localStorage.setItem('dagplan_confirmed', JSON.stringify({ date: today, plan }))
+    setDayPlan(plan)
+    setEditPlan(null)
+    setPhase('plan')
     try {
-      await getSupabase().from('diary_entries').upsert(
-        { date: today, plan_text: JSON.stringify(plan) },
-        { onConflict: 'date' }
-      )
-      setDayPlan(plan)
-      setEditPlan(null)
-      setPhase('plan')
+      const res = await fetch('/api/diary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: today, plan_text: JSON.stringify(plan) }),
+      })
+      if (!res.ok) throw new Error('Opslaan mislukt.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Opslaan mislukt.')
     }
@@ -340,6 +368,7 @@ export default function VandaagPage() {
     setShowSluitAf(false)
     localStorage.removeItem('dagplan_basket')
     localStorage.removeItem('dagplan_destination')
+    localStorage.removeItem('dagplan_confirmed')
   }
 
   const handleAddStop = () => {
