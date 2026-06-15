@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { uitjes, Uitje, UitjeType } from '@/lib/uitjes'
 import { HOME_COORDS, getTodayBaseCoords, isChartresPhase } from '@/lib/reiskalender'
+import { getParisDateString } from '@/lib/date-utils'
 
 const UitjesMap = dynamic(() => import('@/components/UitjesMap'), { ssr: false })
 
@@ -67,6 +68,7 @@ export default function UitjesPage() {
   const [basketIds, setBasketIds] = useState<string[]>([])
   const [visitedNames, setVisitedNames] = useState<string[]>([])
   const [detailUitje, setDetailUitje] = useState<Uitje | null>(null)
+  const [dagplanBevestigd, setDagplanBevestigd] = useState(false)
   // Verblijfplaats van vandaag (op de Chartres-dagen verschuift dit mee).
   const [homeBase, setHomeBase] = useState<[number, number]>(HOME_COORDS)
   // Chartres-uitjes blijven verborgen tot de terugreis-etappe (27/28 juni).
@@ -80,6 +82,14 @@ export default function UitjesPage() {
   useEffect(() => {
     const saved = localStorage.getItem('dagplan_basket')
     if (saved) setBasketIds(JSON.parse(saved))
+
+    const savedPlan = localStorage.getItem('dagplan_confirmed')
+    if (savedPlan) {
+      try {
+        const { date, plan } = JSON.parse(savedPlan)
+        if (date === getParisDateString() && plan?.stops) setDagplanBevestigd(true)
+      } catch { /* ignore */ }
+    }
 
     // Haal bezochte uitjes op uit diary entries
     fetch('/api/diary')
@@ -239,16 +249,20 @@ export default function UitjesPage() {
             className="max-w-md mx-auto rounded-2xl p-3 flex items-center gap-3"
             style={{ background: '#2C2316', boxShadow: '0 4px 20px rgba(44,35,22,0.3)' }}
           >
-            <span className="material-symbols-outlined" style={{ color: 'oklch(79% 0.16 83)' }}>shopping_bag</span>
+            <span className="material-symbols-outlined" style={{ color: 'oklch(79% 0.16 83)' }}>
+              {dagplanBevestigd ? 'check_circle' : 'shopping_bag'}
+            </span>
             <p className="flex-1 text-sm font-semibold text-white">
-              {basketIds.length} uitje{basketIds.length > 1 ? 's' : ''} in je plan
+              {dagplanBevestigd
+                ? 'Dagplan al bevestigd'
+                : `${basketIds.length} uitje${basketIds.length > 1 ? 's' : ''} in je plan`}
             </p>
             <a
               href="/vandaag"
               className="rounded-full text-white text-xs font-bold px-3 py-1.5"
               style={{ background: 'oklch(57% 0.14 40)' }}
             >
-              Maak dagplan →
+              {dagplanBevestigd ? 'Bekijk plan →' : 'Maak dagplan →'}
             </a>
           </div>
         </div>
