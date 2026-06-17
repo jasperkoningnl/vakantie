@@ -337,7 +337,7 @@ export default function VandaagPage() {
 
   const handleSluitAf = async (selectedPhotos: PhotoMeta[]) => {
     setSluitSaving(true)
-    const actualText = followedPlan === false ? sluitActualText : 'We hebben het plan gevolgd.'
+    const actualText = sluitActualText || (followedPlan === false ? '' : 'We hebben het plan gevolgd.')
     try {
       await fetch('/api/diary', {
         method: 'POST',
@@ -485,6 +485,7 @@ export default function VandaagPage() {
               onConfirm={addStopMode ? handleAddStopReturn : () => handlePlan(today, basketIds, mainDestinationId)}
               onReset={reset}
               onOpenInfo={setInfoUitjeId}
+              onStayHome={addStopMode ? undefined : () => handleConfirmPlan({ stops: [], checklist: [], intro: 'Vandaag blijven we lekker op het terrein.' })}
             />
           )}
 
@@ -976,6 +977,7 @@ function SelectPhase({
   onConfirm,
   onReset,
   onOpenInfo,
+  onStayHome,
 }: {
   activeCatTab: string
   setActiveCatTab: (v: string) => void
@@ -988,6 +990,7 @@ function SelectPhase({
   onConfirm: () => void
   onReset?: () => void
   onOpenInfo: (id: string) => void
+  onStayHome?: () => void
 }) {
   const activeCat = CATEGORIES.find(c => c.value === activeCatTab) || CATEGORIES[0]
   const baseCoords = getTodayBaseCoords()
@@ -1071,6 +1074,20 @@ function SelectPhase({
             : 'Kies een bestemming — voeg dan tussenstops toe'
         }
       </p>
+
+      {!addStopMode && !mainDestinationId && onStayHome && (
+        <button
+          onClick={onStayHome}
+          className="w-full rounded-2xl p-4 mb-5 flex items-center gap-3 text-left"
+          style={{ background: '#FAF7F0', border: '2px dashed #E4D9C8' }}
+        >
+          <span className="text-2xl">🏕️</span>
+          <div>
+            <p className="text-sm font-bold" style={{ color: '#2C2316' }}>We blijven op het terrein</p>
+            <p className="text-xs" style={{ color: '#A8937A' }}>Geen uitstapje vandaag — gewoon genieten</p>
+          </div>
+        </button>
+      )}
 
       {/* Category grid — 2×3, always fully visible */}
       <div className="grid grid-cols-3 gap-2 mb-5">
@@ -1378,11 +1395,19 @@ function DagplanView({
           <span className="material-symbols-outlined text-sm" style={{ color: 'oklch(58% 0.10 148)', fontVariationSettings: "'FILL' 1", fontSize: 14 }}>check_circle</span>
           <span className="text-xs font-bold" style={{ color: 'oklch(40% 0.10 148)' }}>Plan actief</span>
         </div>
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
-          <span className="material-symbols-outlined text-sm" style={{ color: '#A8937A' }}>place</span>
-          <span className="text-sm font-bold text-on-surface">{totalStops}</span>
-          <span className="text-xs" style={{ color: '#A8937A' }}>stop{totalStops !== 1 ? 's' : ''}</span>
-        </div>
+        {totalStops > 0 && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
+            <span className="material-symbols-outlined text-sm" style={{ color: '#A8937A' }}>place</span>
+            <span className="text-sm font-bold text-on-surface">{totalStops}</span>
+            <span className="text-xs" style={{ color: '#A8937A' }}>stop{totalStops !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+        {totalStops === 0 && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#FAF7F0', border: '1px solid #E4D9C8' }}>
+            <span className="text-sm">🏕️</span>
+            <span className="text-xs font-semibold" style={{ color: '#A8937A' }}>Op het terrein</span>
+          </div>
+        )}
       </div>
 
       {/* Route map */}
@@ -1404,6 +1429,14 @@ function DagplanView({
 
       {/* Timeline */}
       <div className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#A8937A' }}>Dagprogramma</div>
+
+      {totalStops === 0 ? (
+        <div className="rounded-2xl p-5 mb-5 text-center" style={{ background: 'linear-gradient(145deg, oklch(94% 0.04 75), oklch(96% 0.025 60))', border: '1px solid #E4D9C8' }}>
+          <p className="text-4xl mb-3">🏕️</p>
+          <p className="font-bold text-base mb-1" style={{ color: '#2C2316' }}>Vandaag op het terrein</p>
+          <p className="text-sm" style={{ color: '#6B5A3E' }}>Lekker ontspannen, zwemmen, spelen — gewoon genieten!</p>
+        </div>
+      ) : (
       <div className="relative mb-5" style={{ paddingLeft: 32 }}>
         <div className="absolute top-2 bottom-2 w-0.5 rounded-full" style={{ left: 12, background: '#E4D9C8' }} />
 
@@ -1501,6 +1534,7 @@ function DagplanView({
           </div>
         </div>
       </div>
+      )}
 
       {/* Action buttons */}
       <button
@@ -1809,10 +1843,19 @@ function SluitDagAfModal({ date, followedPlan, setFollowedPlan, actualText, setA
           ))}
         </div>
 
-        {followedPlan === false && (
+        {followedPlan !== null && (
           <div className="mb-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#A8937A' }}>Wat hebben jullie gedaan?</p>
-            <textarea value={actualText} onChange={e => setActualText(e.target.value)} placeholder="Schrijf kort wat er echt is gebeurd…" rows={4} className="w-full rounded-2xl p-4 text-sm resize-none focus:outline-none" style={{ background: '#FAF7F0', border: '1.5px solid #E4D9C8', color: '#2C2316', lineHeight: 1.5 }} />
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#A8937A' }}>
+              {followedPlan === false ? 'Wat hebben jullie gedaan?' : 'Verhaaltje (optioneel)'}
+            </p>
+            <textarea
+              value={actualText}
+              onChange={e => setActualText(e.target.value)}
+              placeholder={followedPlan === false ? 'Schrijf kort wat er echt is gebeurd…' : 'Schrijf een herinnering aan deze dag…'}
+              rows={7}
+              className="w-full rounded-2xl p-4 text-sm resize-none focus:outline-none"
+              style={{ background: '#FAF7F0', border: '1.5px solid #E4D9C8', color: '#2C2316', lineHeight: 1.5 }}
+            />
           </div>
         )}
 
